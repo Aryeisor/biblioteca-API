@@ -73,6 +73,18 @@ La API queda en `http://localhost:3000`.
 
 Reglas: `titulo` obligatorio (máx. 200 caracteres); `isbn` opcional y único (máx. 20); `autorId` debe existir (si no, 404); `stock` entero ≥ 0, por defecto 0.
 
+### Usuarios — `/usuarios`
+
+| Método | Ruta             | Descripción              | Body |
+|--------|------------------|--------------------------|------|
+| GET    | `/usuarios`      | Lista todos los usuarios | —    |
+| GET    | `/usuarios/:id`  | Obtiene un usuario       | —    |
+| POST   | `/usuarios`      | Crea un usuario          | `{ "nombre": "Ana Pérez", "email": "ana@correo.com" }` |
+| PUT    | `/usuarios/:id`  | Actualiza un usuario     | Igual que POST |
+| DELETE | `/usuarios/:id`  | Elimina un usuario       | —    |
+
+Reglas: `nombre` obligatorio (máx. 100 caracteres); `email` obligatorio, con formato válido, único (máx. 150) y se guarda en minúsculas.
+
 ### Respuestas de error
 
 Todos los errores responden con `{ "message": "..." }`:
@@ -81,7 +93,7 @@ Todos los errores responden con `{ "message": "..." }`:
 |--------|---------------------------------------------------------------|
 | 400    | ID inválido o datos incorrectos (ej. nombre vacío, título de más de 200 caracteres o stock negativo) |
 | 404    | El registro o la ruta no existe                               |
-| 409    | Valor duplicado (ej. ISBN repetido), o se intenta borrar un registro relacionado (ej. un autor con libros) |
+| 409    | Valor duplicado (ej. ISBN o email repetido), o se intenta borrar un registro relacionado (ej. un autor con libros) |
 | 500    | Error interno del servidor                                    |
 
 ## Base de datos
