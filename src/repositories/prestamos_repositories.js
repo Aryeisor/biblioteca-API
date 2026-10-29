@@ -32,12 +32,11 @@ export const crear = async (client, libroId, usuarioId) => {
 
 export const bloquearPorId = async (client, id) => {
   const { rows } = await client.query(
-    'SELECT id, stock FROM libros WHERE id = $1 FOR UPDATE',
-    [id]
-  );
+    'SELECT id, libro_id, fecha_devolucion FROM prestamos WHERE id = $1 FOR UPDATE', [id]);
   return rows[0];
 };
 
-export const cambiarStock = async (client, id, delta) => {
-  await client.query('UPDATE libros SET stock = stock + $1 WHERE id = $2', [delta, id]);
+export const marcarDevuelto = async(client, id) =>{
+   await client.query(`UPDATE prestamos 
+    SET fecha_devolucion = NOW() WHERE id = $1`, [id]); 
 };

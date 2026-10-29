@@ -6,5 +6,6 @@ const router = Router();
 
 router.get('/',ctrl.listar)
 router.post('/', ctrl.prestar);
+router.patch('/:id/devolver', ctrl.devolver);
 
 export default router;
