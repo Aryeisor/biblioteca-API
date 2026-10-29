@@ -1,0 +1,43 @@
+import pool from '../config/db.js';
+import * as librosrepo from '../repositories/libros_repositories.js';
+import * as usuariosrepo from '../repositories/usuarios_repositories.js';
+import * as repo from '../repositories/prestamos_repositories.js';
+
+//validar libro id y usuario id
+const validarId = (id, nombre = 'ID') => {
+  const n = Number(id);
+  if (!Number.isInteger(n) || n < 1) {
+    throw { status: 400, message: `${nombre} inválido` };
+  }
+  return n;
+};
+
+
+export const prestar = async (libroId,usuarioId) => {
+    const lid = validarId (libroId, "libroId");
+    const uid = validarId (usuarioId, "usuarioId");
+
+    const usuario = await usuariosrepo.buscarPorId(uid);
+        if (!usuario) throw { status: 404, message: 'Usuario no encontrado' };
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            const libro = await librosrepo.bloquearPorId(client,lid);
+            if(!libro) throw ({status:404, message: 'Libro no encontrado'})
+            if(libro.stock < 1) throw ({status:409, message: 'No hay stock suficiente'});
+            
+            await librosrepo.cambiarStock(client, lid, -1);
+            const { id } = await repo.crear(client, lid, uid);
+
+            await client.query('COMMIT');
+            return repo.buscarPorId(id);
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally{
+            client.release();
+        };
+};
+
+export const listar = () => repo.listar();

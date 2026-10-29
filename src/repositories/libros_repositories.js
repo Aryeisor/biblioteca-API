@@ -52,3 +52,15 @@ export const actualizarStock = async (id,{stock}) => {
      SET stock = $1 WHERE id = $2 RETURNING id`,[stock,id]);
     return rows[0]; 
 };
+
+export const bloquearPorId = async (client, id) => {
+  const { rows } = await client.query(
+    'SELECT id, stock FROM libros WHERE id = $1 FOR UPDATE',
+    [id]
+  );
+  return rows[0];
+};
+
+export const cambiarStock = async (client, id, delta) => {
+  await client.query('UPDATE libros SET stock = stock + $1 WHERE id = $2', [delta, id]);
+};
