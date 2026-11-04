@@ -11,7 +11,7 @@ export const prestar = async (req,res) =>{
 };
 
 export const devolver = async (req, res) => {
-  res.json(await service.devolver(req.params.id));
+  res.json(await service.devolver(req.params.id, req.userId));
 };
 
 export const obtener = async (req,res) =>{ 

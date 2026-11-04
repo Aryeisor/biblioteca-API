@@ -39,13 +39,11 @@ export const prestar = async (libroId,usuarioId) => {
             client.release();
         };
 };
-//activos === 'true' devuelve true solo si el texto es exactamente 
-// 'true'. Si no viene el parámetro (undefined) o viene cualquier
-//  otra cosa, da false y devuelve todos.
+
 export const listar = (activos) => repo.listar(activos === 'true');
 
 
-export const devolver = async (id) =>{
+export const devolver = async (id,usuarioId) =>{
     // 1. validar el id
   const pid = validarId(id, 'ID');
 
@@ -60,6 +58,11 @@ export const devolver = async (id) =>{
 
     // 5. si no existe -> 404
     if (!prestamo) throw { status: 404, message: 'Préstamo no encontrado' };
+
+    // 5b. solo el dueño del préstamo puede devolverlo
+    if (prestamo.usuario_id !== usuarioId) {
+      throw { status: 403, message: 'No puedes devolver un préstamo que no es tuyo' };
+    }
 
     // 6. si ya tiene fecha_devolucion -> 409
     if (prestamo.fecha_devolucion !== null) {

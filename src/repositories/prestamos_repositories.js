@@ -36,7 +36,7 @@ export const crear = async (client, libroId, usuarioId) => {
 
 export const bloquearPorId = async (client, id) => {
   const { rows } = await client.query(
-    'SELECT id, libro_id, fecha_devolucion FROM prestamos WHERE id = $1 FOR UPDATE', [id]);
+    'SELECT id, libro_id, usuario_id, fecha_devolucion FROM prestamos WHERE id = $1 FOR UPDATE', [id]);
   return rows[0];
 };
 
