@@ -69,9 +69,10 @@ La API queda en `http://localhost:3000`.
 | GET    | `/libros/:id`           | Obtiene un libro                              | —    |
 | POST   | `/libros`               | Crea un libro                                 | `{ "titulo": "Cien años de soledad", "isbn": "978-0307474728", "autorId": 1, "stock": 3 }` |
 | PUT    | `/libros/:id`           | Actualiza un libro                            | Igual que POST |
+| PATCH  | `/libros/:id/stock`     | Cambia solo el stock del libro                | `{ "stock": 5 }` |
 | DELETE | `/libros/:id`           | Elimina un libro                              | —    |
 
-Reglas: `titulo` obligatorio (máx. 200 caracteres); `isbn` opcional y único (máx. 20); `autorId` debe existir (si no, 404); `stock` entero ≥ 0, por defecto 0.
+Reglas: `titulo` obligatorio (máx. 200 caracteres); `isbn` opcional y único (máx. 20); `autorId` debe existir (si no, 404); `stock` entero ≥ 0, por defecto 0 (en el PATCH es obligatorio).
 
 ### Usuarios — `/usuarios`
 
@@ -85,6 +86,18 @@ Reglas: `titulo` obligatorio (máx. 200 caracteres); `isbn` opcional y único (m
 
 Reglas: `nombre` obligatorio (máx. 100 caracteres); `email` obligatorio, con formato válido, único (máx. 150) y se guarda en minúsculas.
 
+### Préstamos — `/prestamos`
+
+| Método | Ruta                       | Descripción                                        | Body |
+|--------|----------------------------|----------------------------------------------------|------|
+| GET    | `/prestamos`               | Lista todos los préstamos (con título y usuario)   | —    |
+| GET    | `/prestamos?activos=true`  | Lista solo los préstamos no devueltos              | —    |
+| GET    | `/prestamos/:id`           | Obtiene un préstamo                                | —    |
+| POST   | `/prestamos`               | Presta un libro a un usuario (descuenta 1 de stock) | `{ "libroId": 1, "usuarioId": 1 }` |
+| PATCH  | `/prestamos/:id/devolver`  | Marca el préstamo como devuelto (suma 1 al stock)  | —    |
+
+Reglas: el libro y el usuario deben existir (si no, 404); si el libro no tiene stock responde 409; devolver un préstamo ya devuelto responde 409. Prestar y devolver se hacen en una transacción (`BEGIN`/`COMMIT`, con `SELECT ... FOR UPDATE`), así el stock y el préstamo nunca quedan desincronizados aunque lleguen peticiones a la vez.
+
 ### Respuestas de error
 
 Todos los errores responden con `{ "message": "..." }`:
@@ -93,7 +106,7 @@ Todos los errores responden con `{ "message": "..." }`:
 |--------|---------------------------------------------------------------|
 | 400    | ID inválido o datos incorrectos (ej. nombre vacío, título de más de 200 caracteres o stock negativo) |
 | 404    | El registro o la ruta no existe                               |
-| 409    | Valor duplicado (ej. ISBN o email repetido), o se intenta borrar un registro relacionado (ej. un autor con libros) |
+| 409    | Valor duplicado (ej. ISBN o email repetido), se intenta borrar un registro relacionado (ej. un autor con libros), libro sin stock o préstamo ya devuelto |
 | 500    | Error interno del servidor                                    |
 
 ## Base de datos
