@@ -4,7 +4,7 @@ API REST para gestionar una biblioteca: autores, libros, usuarios y préstamos. 
 
 ## Tecnologías
 
-Node.js · Express 5 · PostgreSQL · pg · ES Modules
+Node.js · Express 5 · PostgreSQL · pg · bcryptjs · jsonwebtoken · ES Modules
 
 ## Requisitos
 
@@ -36,7 +36,18 @@ Node.js · Express 5 · PostgreSQL · pg · ES Modules
    DB_USER=postgres
    DB_PASSWORD=tu_contraseña
    DB_NAME=biblioteca
+
+   JWT_SECRET=cambia_esto_por_un_secreto_largo_y_aleatorio
+   JWT_EXPIRES_IN=1h
    ```
+
+   Para generar un `JWT_SECRET` seguro:
+
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+   ```
+
+   Nunca subas el `.env` real al repositorio (contiene la contraseña de la BD y el secreto del JWT); solo se sube `.env.example`.
 
 4. Crear la base de datos en PostgreSQL (desde psql o pgAdmin):
 
@@ -60,6 +71,44 @@ npm start     # producción
 ```
 
 La API queda en `http://localhost:3000`.
+
+## Autenticación
+
+La API usa JWT. Las contraseñas se guardan como hash con bcrypt y nunca se devuelven en las respuestas.
+
+### Auth — `/auth`
+
+| Método | Ruta              | Descripción                      | Body |
+|--------|-------------------|----------------------------------|------|
+| POST   | `/auth/registrar` | Registra un usuario              | `{ "nombre": "Ana Pérez", "email": "ana@correo.com", "password": "unaClaveSegura" }` |
+| POST   | `/auth/login`     | Inicia sesión y devuelve un token | `{ "email": "ana@correo.com", "password": "unaClaveSegura" }` |
+
+- `POST /auth/registrar` responde `201` con el usuario creado, sin password (`id`, `nombre`, `email`, `created_at`). Reglas: `nombre` y `email` igual que en usuarios; `password` obligatorio, entre 8 y 72 caracteres (72 es el límite de bcrypt); email único (si se repite responde 409).
+- `POST /auth/login` responde `200` con `{ "token": "..." }`. Si falta el email o la contraseña responde 400. Si el email no existe o la contraseña no coincide responde `401` con `{ "message": "Credenciales invalidas" }`: es el mismo mensaje en ambos casos a propósito, para no revelar qué emails están registrados.
+
+### Cómo usar el token
+
+Envía el token en el header de cada petición protegida:
+
+```text
+Authorization: Bearer <token>
+```
+
+En Insomnia: pestaña **Auth** → **Bearer Token** → pega el token en el campo *Token*.
+
+El token expira según `JWT_EXPIRES_IN` (por ejemplo `1h`). Cuando expira, la API responde 401 y hay que volver a hacer login.
+
+### Rutas protegidas
+
+| Módulo     | Públicas (sin token)       | Protegidas (requieren token) |
+|------------|----------------------------|------------------------------|
+| Auth       | `POST /auth/registrar`, `POST /auth/login` | — |
+| Autores    | `GET /autores`, `GET /autores/:id` | `POST`, `PUT`, `DELETE` |
+| Libros     | `GET /libros`, `GET /libros/:id` | `POST`, `PUT`, `PATCH /libros/:id/stock`, `DELETE` |
+| Usuarios   | —                          | Todas. `PUT` y `DELETE` solo sobre el propio usuario (403 si el `:id` no es el del token) |
+| Préstamos  | —                          | Todas. `POST` toma el usuario del token; `PATCH /prestamos/:id/devolver` solo sobre préstamos propios (403 si es de otro usuario) |
+
+Sin token responde `401 { "message": "Token requerido" }`; con un token inválido o expirado, `401 { "message": "Token inválido o expirado" }`.
 
 ## Endpoints
 
@@ -95,9 +144,10 @@ Reglas: `titulo` obligatorio (máx. 200 caracteres); `isbn` opcional y único (m
 |--------|------------------|--------------------------|------|
 | GET    | `/usuarios`      | Lista todos los usuarios | —    |
 | GET    | `/usuarios/:id`  | Obtiene un usuario       | —    |
-| POST   | `/usuarios`      | Crea un usuario          | `{ "nombre": "Ana Pérez", "email": "ana@correo.com" }` |
-| PUT    | `/usuarios/:id`  | Actualiza un usuario     | Igual que POST |
-| DELETE | `/usuarios/:id`  | Elimina un usuario       | —    |
+| PUT    | `/usuarios/:id`  | Actualiza tu propio usuario | `{ "nombre": "Ana Pérez", "email": "ana@correo.com" }` |
+| DELETE | `/usuarios/:id`  | Elimina tu propio usuario   | —    |
+
+El alta de usuarios se hace con `POST /auth/registrar`. Todas las rutas requieren token; `PUT` y `DELETE` responden 403 (`Solo puedes modificar tu propio usuario`) si el `:id` no es el del usuario autenticado.
 
 Reglas: `nombre` obligatorio (máx. 100 caracteres); `email` obligatorio, con formato válido, único (máx. 150) y se guarda en minúsculas.
 
@@ -108,10 +158,10 @@ Reglas: `nombre` obligatorio (máx. 100 caracteres); `email` obligatorio, con fo
 | GET    | `/prestamos`               | Lista todos los préstamos (con título y usuario)   | —    |
 | GET    | `/prestamos?activos=true`  | Lista solo los préstamos no devueltos              | —    |
 | GET    | `/prestamos/:id`           | Obtiene un préstamo                                | —    |
-| POST   | `/prestamos`               | Presta un libro a un usuario (descuenta 1 de stock) | `{ "libroId": 1, "usuarioId": 1 }` |
-| PATCH  | `/prestamos/:id/devolver`  | Marca el préstamo como devuelto (suma 1 al stock)  | —    |
+| POST   | `/prestamos`               | Presta un libro al usuario autenticado (descuenta 1 de stock) | `{ "libroId": 1 }` |
+| PATCH  | `/prestamos/:id/devolver`  | Marca tu préstamo como devuelto (suma 1 al stock)  | —    |
 
-Reglas: el libro y el usuario deben existir (si no, 404); si el libro no tiene stock responde 409; devolver un préstamo ya devuelto responde 409. Prestar y devolver se hacen en una transacción (`BEGIN`/`COMMIT`, con `SELECT ... FOR UPDATE`), así el stock y el préstamo nunca quedan desincronizados aunque lleguen peticiones a la vez.
+Reglas: todas las rutas requieren token; el usuario del préstamo se toma del token, no del body. El libro y el usuario deben existir (si no, 404); si el libro no tiene stock responde 409; devolver un préstamo de otro usuario responde 403; devolver un préstamo ya devuelto responde 409. Prestar y devolver se hacen en una transacción (`BEGIN`/`COMMIT`, con `SELECT ... FOR UPDATE`), así el stock y el préstamo nunca quedan desincronizados aunque lleguen peticiones a la vez.
 
 Ejemplo de respuesta de `POST /prestamos` (`201 Created`):
 
@@ -144,6 +194,8 @@ Todos los errores responden con `{ "message": "..." }`:
 | Código | Cuándo                                                        |
 |--------|---------------------------------------------------------------|
 | 400    | ID inválido o datos incorrectos (ej. nombre vacío, título de más de 200 caracteres o stock negativo) |
+| 401    | Token ausente, inválido o expirado; o credenciales inválidas en el login |
+| 403    | Acción sobre recursos de otro usuario (modificar/eliminar otro usuario o devolver un préstamo ajeno) |
 | 404    | El registro o la ruta no existe                               |
 | 409    | Valor duplicado (ej. ISBN o email repetido), se intenta borrar un registro relacionado (ej. un autor con libros), libro sin stock o préstamo ya devuelto |
 | 500    | Error interno del servidor                                    |
@@ -154,10 +206,10 @@ Todos los errores responden con `{ "message": "..." }`:
 |-------------|--------------------------------------------------------------|
 | `autores`   | Autores de los libros                                        |
 | `libros`    | Libros con ISBN único y stock; cada uno pertenece a un autor |
-| `usuarios`  | Usuarios de la biblioteca, con email único                   |
+| `usuarios`  | Usuarios de la biblioteca, con email único y columna `password` (hash bcrypt, nunca se devuelve en las respuestas) |
 | `prestamos` | Préstamos de libros a usuarios; `fecha_devolucion` vacía = no devuelto |
 
-El esquema completo está en [db/schema.sql](db/schema.sql).
+El esquema completo está en [db/schema.sql](db/schema.sql), que ya incluye la columna `password` en `usuarios`.
 
 ## Estructura del proyecto
 
@@ -170,19 +222,19 @@ src/
   app.js              # configuración de Express y rutas
   config/db.js        # conexión (pool) a PostgreSQL
   routes/             # define las rutas
-    autores.router.js, libros.router.js, prestamos.router.js, usuarios.router.js
+    auth.router.js, autores.router.js, libros.router.js, prestamos.router.js, usuarios.router.js
   controllers/        # traduce la petición HTTP a llamadas al service
-    autores_controller.js, libros_controller.js, prestamos_controller.js, usuarios_controller.js
+    auth_controller.js, autores_controller.js, libros_controller.js, prestamos_controller.js, usuarios_controller.js
   services/           # reglas de negocio y validaciones
-    autores_services.js, libros_services.js, prestamos_services.js, usuarios_services.js
+    auth_services.js, autores_services.js, libros_services.js, prestamos_services.js, usuarios_services.js
   repositories/       # consultas SQL
     autores_repositories.js, libros_repositories.js, prestamos_repositories.js, usuarios_repositories.js
-  middlewares/        # manejo de errores
-    errorHandler.js
+  middlewares/        # verificación del token JWT y manejo de errores
+    auth.js, errorHandler.js
 ```
 
 ## Próximos pasos
 
-- [ ] Autenticación con JWT y bcrypt
+- [x] Autenticación con JWT y bcrypt
 - [ ] Tests con Supertest
 - [ ] Docker Compose para levantar la API y PostgreSQL
