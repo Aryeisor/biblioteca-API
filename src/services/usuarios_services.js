@@ -45,10 +45,9 @@ export const obtener = async (id) => {
   return usuario;
 };
 
-export const crear = (nombre,email) => repo.crear(validarNombre(nombre), validarEmail(email));
-
-export const actualizar = async (id, nombre, email) => {
+export const actualizar = async (id, nombre, email, userId) => {
   const usuarioId = validarId(id);
+  if (usuarioId !== userId) throw { status: 403, message: 'Solo puedes modificar tu propio usuario' };
   const nombreLimpio = validarNombre(nombre);
   const emailLimpio = validarEmail(email);
 
@@ -57,7 +56,9 @@ export const actualizar = async (id, nombre, email) => {
   return usuario;
 };
 
-export const eliminar = async (id) => {
-  const eliminado = await repo.eliminar(validarId(id));
+export const eliminar = async (id, userId) => {
+  const usuarioId = validarId(id);
+  if (usuarioId !== userId) throw { status: 403, message: 'Solo puedes modificar tu propio usuario' };
+  const eliminado = await repo.eliminar(usuarioId);
   if (!eliminado) throw { status: 404, message: 'Usuario no encontrado' };
 };

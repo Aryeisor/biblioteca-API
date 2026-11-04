@@ -10,11 +10,6 @@ export const buscarPorId = async (id) =>{
     return rows[0];
 };
 
-export const crear = async(nombre,email) => {
-    const {rows}= await pool.query('INSERT INTO usuarios (nombre, email) VALUES ($1, $2) RETURNING id, nombre, email, created_at', [nombre,email]);
-    return rows[0];
-};
-
 export const crearConPassword = async (nombre,email,passwordHash) =>{
     const {rows} = await pool.query('INSERT INTO usuarios (nombre, email, password) VALUES ($1, $2, $3) RETURNING id, nombre, email, created_at ', [nombre,email,passwordHash]);
     return rows[0];
