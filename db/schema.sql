@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
     id          INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     nombre      VARCHAR(100) NOT NULL,
     email       VARCHAR(150) NOT NULL UNIQUE,
+    password    VARCHAR(100),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
