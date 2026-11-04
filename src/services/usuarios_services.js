@@ -9,7 +9,7 @@ const validarId = (id) => {
   return n;
 };
 
-const validarNombre = (nombre) => {
+export const validarNombre = (nombre) => {
   if (typeof nombre !== 'string' || nombre.trim() === '') {
     throw { status: 400, message: 'El nombre es obligatorio' };
   }
@@ -19,7 +19,7 @@ const validarNombre = (nombre) => {
   return nombre.trim();
 };
 
-const validarEmail = (email) => {
+export const validarEmail = (email) => {
   if (typeof email !== 'string' || email.trim() === '') {
     throw { status: 400, message: 'El correo es obligatorio' };
   }
