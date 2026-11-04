@@ -39,8 +39,10 @@ export const prestar = async (libroId,usuarioId) => {
             client.release();
         };
 };
-
-export const listar = () => repo.listar();
+//activos === 'true' devuelve true solo si el texto es exactamente 
+// 'true'. Si no viene el parámetro (undefined) o viene cualquier
+//  otra cosa, da false y devuelve todos.
+export const listar = (activos) => repo.listar(activos === 'true');
 
 
 export const devolver = async (id) =>{

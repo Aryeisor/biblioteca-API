@@ -9,10 +9,14 @@ const SELECT_BASE = `
   JOIN usuarios u ON u.id = p.usuario_id
 `;
 
-export const listar = async () =>{
-    const {rows} = await pool.query(`${SELECT_BASE}
-        ORDER BY p.id `);
-    return rows;    
+export const listar = async (soloActivos = false) =>{
+  if(soloActivos){
+    const {rows} = await pool.query(`${SELECT_BASE} WHERE p.fecha_devolucion
+      IS NULL ORDER BY id `);
+    return rows;
+  }
+  const {rows} = await pool.query(`${SELECT_BASE} ORDER BY p.id`);
+  return rows;
 };
 
 export const buscarPorId = async (id) =>{
