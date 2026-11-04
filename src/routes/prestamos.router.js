@@ -4,8 +4,11 @@ import * as ctrl from '../controllers/prestamos_controller.js';
 
 const router = Router();
 
-router.get('/',ctrl.listar)
+router.get('/',ctrl.listar);
+router.get('/:id', ctrl.obtener);
 router.post('/', ctrl.prestar);
 router.patch('/:id/devolver', ctrl.devolver);
+
+
 
 export default router;

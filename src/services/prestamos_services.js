@@ -83,3 +83,10 @@ export const devolver = async (id) =>{
   }
   
 };
+
+export const obtener = async (id) => {
+  const prestamo = await repo.buscarPorId(validarId(id, 'ID'));
+  if(!prestamo) throw {status: 404 , message: "Prestamo no encontrado"};
+  return prestamo;
+
+};
