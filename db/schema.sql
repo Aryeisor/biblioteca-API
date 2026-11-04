@@ -1,12 +1,12 @@
 -- db/schema.sql
 
-CREATE TABLE autores (
+CREATE TABLE IF NOT EXISTS autores (
     id          INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     nombre      VARCHAR(100) NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE libros (
+CREATE TABLE IF NOT EXISTS libros (
     id          INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     titulo      VARCHAR(200) NOT NULL,
     isbn        VARCHAR(20) UNIQUE,
@@ -15,14 +15,14 @@ CREATE TABLE libros (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE usuarios (
+CREATE TABLE IF NOT EXISTS usuarios (
     id          INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     nombre      VARCHAR(100) NOT NULL,
     email       VARCHAR(150) NOT NULL UNIQUE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE prestamos (
+CREATE TABLE IF NOT EXISTS prestamos (
     id                INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     libro_id          INT NOT NULL REFERENCES libros(id) ON DELETE RESTRICT,
     usuario_id        INT NOT NULL REFERENCES usuarios(id) ON DELETE RESTRICT,
@@ -32,6 +32,6 @@ CREATE TABLE prestamos (
 );
 
 -- PostgreSQL NO crea índices automáticos en las llaves foráneas
-CREATE INDEX idx_libros_autor_id ON libros(autor_id);
-CREATE INDEX idx_prestamos_libro_id ON prestamos(libro_id);
-CREATE INDEX idx_prestamos_usuario_id ON prestamos(usuario_id);
+CREATE INDEX IF NOT EXISTS idx_libros_autor_id ON libros(autor_id);
+CREATE INDEX IF NOT EXISTS idx_prestamos_libro_id ON prestamos(libro_id);
+CREATE INDEX IF NOT EXISTS idx_prestamos_usuario_id ON prestamos(usuario_id);

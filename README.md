@@ -2,6 +2,10 @@
 
 API REST para gestionar una biblioteca: autores, libros, usuarios y préstamos. Hecha con Node.js, Express 5 y PostgreSQL.
 
+## Tecnologías
+
+Node.js · Express 5 · PostgreSQL · pg · ES Modules
+
 ## Requisitos
 
 - Node.js 22 o superior
@@ -9,13 +13,20 @@ API REST para gestionar una biblioteca: autores, libros, usuarios y préstamos. 
 
 ## Instalación
 
-1. Instalar las dependencias:
+1. Clonar el repositorio:
+
+   ```bash
+   git clone https://github.com/tu-usuario/biblioteca-API.git
+   cd biblioteca-API
+   ```
+
+2. Instalar las dependencias:
 
    ```bash
    npm install
    ```
 
-2. Copiar `.env.example` a `.env` y poner los datos de tu PostgreSQL:
+3. Copiar `.env.example` a `.env` y poner los datos de tu PostgreSQL:
 
    ```env
    PORT=3000
@@ -27,17 +38,19 @@ API REST para gestionar una biblioteca: autores, libros, usuarios y préstamos. 
    DB_NAME=biblioteca
    ```
 
-3. Crear la base de datos en PostgreSQL (desde psql o pgAdmin):
+4. Crear la base de datos en PostgreSQL (desde psql o pgAdmin):
 
    ```sql
    CREATE DATABASE biblioteca;
    ```
 
-4. Crear las tablas (ejecuta `db/schema.sql`; solo se corre una vez):
+5. Crear las tablas (ejecuta `db/schema.sql`):
 
    ```bash
    npm run db:init
    ```
+
+   Basta con ejecutarlo una vez. Si se vuelve a correr no falla: el schema usa `CREATE TABLE IF NOT EXISTS` y `CREATE INDEX IF NOT EXISTS`, así que las tablas e índices que ya existen se omiten y los datos no se tocan. Ojo: por eso mismo, si cambias la definición de una tabla en `schema.sql`, volver a correr el script no la actualiza.
 
 ## Uso
 
@@ -59,6 +72,8 @@ La API queda en `http://localhost:3000`.
 | POST   | `/autores`     | Crea un autor            | `{ "nombre": "Gabriel García Márquez" }` |
 | PUT    | `/autores/:id` | Actualiza un autor       | `{ "nombre": "..." }`    |
 | DELETE | `/autores/:id` | Elimina un autor         | —                        |
+
+Reglas: `nombre` obligatorio (máx. 100 caracteres).
 
 ### Libros — `/libros`
 
@@ -98,6 +113,30 @@ Reglas: `nombre` obligatorio (máx. 100 caracteres); `email` obligatorio, con fo
 
 Reglas: el libro y el usuario deben existir (si no, 404); si el libro no tiene stock responde 409; devolver un préstamo ya devuelto responde 409. Prestar y devolver se hacen en una transacción (`BEGIN`/`COMMIT`, con `SELECT ... FOR UPDATE`), así el stock y el préstamo nunca quedan desincronizados aunque lleguen peticiones a la vez.
 
+Ejemplo de respuesta de `POST /prestamos` (`201 Created`):
+
+```json
+{
+  "id": 1,
+  "fecha_prestamo": "2026-10-29T20:51:08.908Z",
+  "fecha_devolucion": null,
+  "libro_id": 3,
+  "libro": "Don Quijote de la Mancha",
+  "usuario_id": 1,
+  "usuario": "Miguel Ángel"
+}
+```
+
+`fecha_devolucion: null` significa que el préstamo sigue activo (el libro no se ha devuelto).
+
+### Respuestas exitosas
+
+| Código | Cuándo                                                  |
+|--------|---------------------------------------------------------|
+| 200    | Consultas (GET) y actualizaciones (PUT, PATCH, incluido `PATCH /prestamos/:id/devolver`) |
+| 201    | Creación (POST), devuelve el registro creado            |
+| 204    | Eliminación (DELETE), sin cuerpo en la respuesta        |
+
 ### Respuestas de error
 
 Todos los errores responden con `{ "message": "..." }`:
@@ -131,8 +170,19 @@ src/
   app.js              # configuración de Express y rutas
   config/db.js        # conexión (pool) a PostgreSQL
   routes/             # define las rutas
+    autores.router.js, libros.router.js, prestamos.router.js, usuarios.router.js
   controllers/        # traduce la petición HTTP a llamadas al service
+    autores_controller.js, libros_controller.js, prestamos_controller.js, usuarios_controller.js
   services/           # reglas de negocio y validaciones
+    autores_services.js, libros_services.js, prestamos_services.js, usuarios_services.js
   repositories/       # consultas SQL
+    autores_repositories.js, libros_repositories.js, prestamos_repositories.js, usuarios_repositories.js
   middlewares/        # manejo de errores
+    errorHandler.js
 ```
+
+## Próximos pasos
+
+- [ ] Autenticación con JWT y bcrypt
+- [ ] Tests con Supertest
+- [ ] Docker Compose para levantar la API y PostgreSQL
