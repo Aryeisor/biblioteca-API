@@ -43,6 +43,23 @@ const verificarAutor = async (autorId) => {
   if (!autor) throw { status: 404, message: 'El autor indicado no existe' };
 };
 
+export const actualizarStock = async (id, stock) => {
+  const libroId = validarId(id);
+  if(stock === undefined || stock === null || stock === '') throw {
+    status: 400, message: 'El stock es obligatorio'
+  };
+
+  const stockNum = Number(stock);
+  if(!Number.isInteger(stockNum) || stockNum < 0) throw {
+    status:400, message:'El stock debe ser un entero mayor o igual a 0'
+  };
+
+  const actualizado = await repo.actualizarStock(libroId, { stock: stockNum});
+  if (!actualizado) throw { status: 404, message: 'Libro no encontrado' };
+
+  return repo.buscarPorId(libroId);
+};
+
 export const listar = (titulo) => repo.listar(titulo?.trim() || null);
 
 export const obtener = async (id) => {

@@ -7,6 +7,7 @@ router.get('/', ctrl.listar);
 router.get('/:id', ctrl.obtenerPorId);
 router.post('/', ctrl.crear);
 router.put('/:id', ctrl.actualizar);
+router.patch('/:id/stock',ctrl.actualizarStock);
 router.delete('/:id', ctrl.eliminar);
 
 export default router;

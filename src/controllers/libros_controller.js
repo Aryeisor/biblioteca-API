@@ -17,6 +17,10 @@ export const actualizar = async (req,res) =>{
     res.json( await service.actualizar(req.params.id , req.body));
 };
 
+export const actualizarStock = async(req,res)=>{
+    res.json(await service.actualizarStock(req.params.id, req.body.stock));
+};
+
 export const eliminar = async (req,res) => {
     await service.eliminar(req.params.id);
     res.status(204).send();
