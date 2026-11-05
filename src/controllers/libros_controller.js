@@ -9,16 +9,16 @@ export const obtenerPorId = async (req,res) => {
 };
 
 export const crear = async (req,res) =>{
-    const libro = await service.crear(req.body);
+    const libro = await service.crear(req.body ?? {});
     res.status(201).json(libro);
 };
 
 export const actualizar = async (req,res) =>{
-    res.json( await service.actualizar(req.params.id , req.body));
+    res.json( await service.actualizar(req.params.id , req.body ?? {}));
 };
 
 export const actualizarStock = async(req,res)=>{
-    res.json(await service.actualizarStock(req.params.id, req.body.stock));
+    res.json(await service.actualizarStock(req.params.id, req.body?.stock));
 };
 
 export const eliminar = async (req,res) => {

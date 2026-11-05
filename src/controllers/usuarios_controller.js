@@ -9,7 +9,7 @@ export const buscarPorId = async (req,res) => {
 };
 
 export const actualizar = async(req,res) =>{
-    res.json(await service.actualizar(req.params.id ,req.body.nombre, req.body.email, req.userId));
+    res.json(await service.actualizar(req.params.id ,req.body?.nombre, req.body?.email, req.userId));
 };
 
 export const eliminar = async (req,res) =>{

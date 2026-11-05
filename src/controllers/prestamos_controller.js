@@ -6,7 +6,7 @@ export const listar = async (req,res) =>{
 };
 
 export const prestar = async (req,res) =>{
-    const prestamo = await service.prestar(req.body.libroId, req.userId);
+    const prestamo = await service.prestar(req.body?.libroId, req.userId);
     res.status(201).json(prestamo);
 };
 
