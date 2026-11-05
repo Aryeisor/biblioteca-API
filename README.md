@@ -72,6 +72,53 @@ npm start     # producción
 
 La API queda en `http://localhost:3000`.
 
+## Pruebas
+
+Los tests usan el test runner nativo de Node (`node:test` con `node:assert/strict`) y [Supertest](https://github.com/ladjs/supertest) para hacer peticiones HTTP a la app sin levantar el servidor. Corren contra una base de datos aparte, `biblioteca_test`, así que nunca tocan la base real `biblioteca`.
+
+1. Copiar `.env.test.example` a `.env.test` y poner los datos de tu PostgreSQL:
+
+   ```env
+   PORT=3001
+   DB_HOST=localhost
+   DB_PORT=5432
+   DB_USER=postgres
+   DB_PASSWORD=tu_contraseña
+   DB_NAME=biblioteca_test
+   JWT_SECRET=secreto_de_prueba_solo_para_tests
+   JWT_EXPIRES_IN=1h
+   ```
+
+   Igual que el `.env`, el `.env.test` real no se sube al repositorio.
+
+2. Crear la base de prueba y sus tablas:
+
+   ```bash
+   npm run db:init:test
+   ```
+
+   Crea `biblioteca_test` si no existe y aplica `db/schema.sql`. Ojo: cada vez que se ejecuta **borra y recrea el esquema** de la base de prueba (así siempre refleja `schema.sql`), por lo que se pierden sus datos.
+
+3. Ejecutar los tests:
+
+   ```bash
+   npm test
+   ```
+
+   Los archivos de `tests/` se ejecutan uno a uno (`--test-concurrency=1`) porque comparten la misma base; cada archivo vacía las tablas al empezar.
+
+Como protección, tanto `npm run db:init:test` como los tests se niegan a correr si `DB_NAME` no termina en `_test`.
+
+Actualmente hay **44 tests** que cubren:
+
+- **Autenticación**: registro (email en minúsculas, sin password en la respuesta, email repetido, contraseña corta, email inválido), login correcto e incorrecto (mismo mensaje 401) y rutas protegidas sin token o con token inválido.
+- **Autores**: validación del body.
+- **Libros**: rutas públicas y protegidas, autor inexistente, stock negativo, ISBN repetido, `PATCH /libros/:id/stock` y filtro por título.
+- **Usuarios**: todas las rutas requieren token, nunca se devuelve el password, y `PUT`/`DELETE` sobre otro usuario responden 403.
+- **Préstamos**: el usuario se toma del token, el stock baja al prestar y sube al devolver, sin stock responde 409, un préstamo solo se puede devolver una vez (409 y el stock no vuelve a subir) y solo por su dueño (403).
+- **Concurrencia**: con un libro de stock 1, dos préstamos simultáneos de usuarios distintos no pueden ocurrir a la vez: uno responde 201, el otro 409 y el stock queda en 0.
+- **Peticiones sin body**: responden 400 en vez de 500.
+
 ## Autenticación
 
 La API usa JWT. Las contraseñas se guardan como hash con bcrypt y nunca se devuelven en las respuestas.
@@ -217,6 +264,7 @@ El esquema completo está en [db/schema.sql](db/schema.sql), que ya incluye la c
 db/
   schema.sql          # tablas e índices
   init.js             # script que ejecuta schema.sql
+  init-test.js        # crea la base de prueba (DB_NAME de .env.test) y recrea sus tablas
 src/
   server.js           # punto de entrada: conecta a la BD y levanta el servidor
   app.js              # configuración de Express y rutas
@@ -231,10 +279,12 @@ src/
     autores_repositories.js, libros_repositories.js, prestamos_repositories.js, usuarios_repositories.js
   middlewares/        # verificación del token JWT y manejo de errores
     auth.js, errorHandler.js
+tests/                # tests con node:test y Supertest contra la base de prueba
+  helpers.js, auth.test.js, autores.test.js, libros.test.js, prestamos.test.js, usuarios.test.js
 ```
 
 ## Próximos pasos
 
 - [x] Autenticación con JWT y bcrypt
-- [ ] Tests con Supertest
+- [x] Tests con Supertest
 - [ ] Docker Compose para levantar la API y PostgreSQL
