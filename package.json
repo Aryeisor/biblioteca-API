@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "db:init": "node db/init.js"
+    "db:init": "node db/init.js",
+    "db:init:test": "node db/init-test.js",
+    "test": "node --env-file=.env.test --test"
   },
   "keywords": [],
   "author": "",
@@ -18,5 +20,8 @@
     "express": "^5.3.0",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "supertest": "^7.3.1"
   }
 }
