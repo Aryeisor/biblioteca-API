@@ -72,6 +72,41 @@ npm start     # producción
 
 La API queda en `http://localhost:3000`.
 
+## Ejecución con Docker
+
+Levanta la API y un PostgreSQL 17 en contenedores, sin instalar Node ni PostgreSQL en tu equipo.
+
+Requisito: [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+
+1. Copiar `.env.example` a `.env` y completar los datos (el mismo archivo de la [instalación](#instalación)). Compose usa `DB_USER`, `DB_PASSWORD` y `DB_NAME` para crear la base del contenedor, y `JWT_SECRET`, `JWT_EXPIRES_IN` y `PORT` para la API.
+
+2. Construir y levantar los contenedores:
+
+   ```bash
+   docker compose up --build
+   ```
+
+   La API queda en `http://localhost:3000`. Compose espera a que PostgreSQL esté listo (healthcheck con `pg_isready`) antes de arrancar la API.
+
+- **El esquema se carga solo la primera vez.** `db/schema.sql` se ejecuta automáticamente al crear el volumen de datos (`pgdata`). Si después cambias `schema.sql`, no se vuelve a aplicar: hay que borrar el volumen con `docker compose down -v` (se pierden los datos).
+- **La base del contenedor es independiente de tu PostgreSQL local.** Tienen datos distintos aunque se llamen igual. Compose fija `DB_HOST=db` (el nombre del servicio) y `DB_PORT=5432`, así que los valores de `DB_HOST` y `DB_PORT` de tu `.env` solo se usan al correr la API sin Docker.
+
+| Comando                      | Qué hace                                                |
+|------------------------------|---------------------------------------------------------|
+| `docker compose up -d`       | Levanta los contenedores en segundo plano               |
+| `docker compose logs -f api` | Muestra los logs de la API en vivo                      |
+| `docker compose down`        | Detiene y elimina los contenedores (conserva los datos) |
+| `docker compose down -v`     | Igual, pero también **borra el volumen con los datos**  |
+
+No ejecutes `npm run dev` y Docker a la vez: los dos usan el puerto 3000 y el segundo en arrancar falla.
+
+El puerto de PostgreSQL no se publica en el equipo: la API se conecta por la red interna de Compose. Si quieres conectarte a la base del contenedor con psql o DBeaver, agrega esto al servicio `db` en `docker-compose.yml` y conéctate a `localhost:5433` (se usa 5433 para no chocar con un PostgreSQL local en 5432):
+
+```yaml
+    ports:
+      - "5433:5432"
+```
+
 ## Pruebas
 
 Los tests usan el test runner nativo de Node (`node:test` con `node:assert/strict`) y [Supertest](https://github.com/ladjs/supertest) para hacer peticiones HTTP a la app sin levantar el servidor. Corren contra una base de datos aparte, `biblioteca_test`, así que nunca tocan la base real `biblioteca`.
@@ -281,10 +316,13 @@ src/
     auth.js, errorHandler.js
 tests/                # tests con node:test y Supertest contra la base de prueba
   helpers.js, auth.test.js, autores.test.js, libros.test.js, prestamos.test.js, usuarios.test.js
+Dockerfile            # imagen de la API (node:22-alpine, solo dependencias de producción, usuario no root)
+docker-compose.yml    # servicios api y db (PostgreSQL 17) con volumen de datos
+.dockerignore         # archivos que no entran en la imagen (.env, node_modules, tests...)
 ```
 
 ## Próximos pasos
 
 - [x] Autenticación con JWT y bcrypt
 - [x] Tests con Supertest
-- [ ] Docker Compose para levantar la API y PostgreSQL
+- [x] Docker Compose para levantar la API y PostgreSQL
