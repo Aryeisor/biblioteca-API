@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { config } from "../config/env.js";
 
 export default (req, res, next) => {
 
@@ -10,7 +11,7 @@ export default (req, res, next) => {
     const token = header.split(' ')[1];
 
     try {
-        const payload = jwt.verify(token, process.env.JWT_SECRET);
+        const payload = jwt.verify(token,config.jwtSecret);
         req.userId = payload.id;
         next();
         // payload es lo que metiste al firmar: { id, iat, exp }

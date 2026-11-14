@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { config } from "../config/env.js";
 import * as repo from '../repositories/usuarios_repositories.js';
 import {validarNombre, validarEmail} from './usuarios_services.js';
 
@@ -53,8 +54,8 @@ export const login = async (email,password) => {
 
     const token = jwt.sign(
         { id: buscarUsuario.id },
-        process.env.JWT_SECRET,
-        { expiresIn: process.env.JWT_EXPIRES_IN }
+        config.jwtSecret,
+        { expiresIn: config.jwtExpiresIn }
         );
 
     return { token };
