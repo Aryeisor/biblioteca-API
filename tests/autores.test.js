@@ -6,7 +6,7 @@ let token;
 
 before(async () => {
     await limpiarTablas();
-    ({ token } = await crearUsuarioConToken('Lector', 'lector@correo.com'));
+    ({ token } = await crearUsuarioConToken('Bibliotecario', 'biblio@correo.com', undefined, 'bibliotecario'));
 });
 after(cerrarPool);
 

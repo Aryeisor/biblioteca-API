@@ -9,9 +9,9 @@ import * as repo from '../repositories/prestamos_repositories.js';
 
 
 
-export const prestar = async (libroId,usuarioId) => {
+export const prestar = async (libroId,usuarioIdBody,user) => {
     const lid = validarId (libroId, "libroId");
-    const uid = validarId (usuarioId, "usuarioId");
+    const uid = user.rol === 'lector'? user.id: validarId(usuarioIdBody ?? user.id, "usuarioId");
 
     const usuario = await usuariosrepo.buscarPorId(uid);
         if (!usuario) throw new AppError(404, 'Usuario no encontrado');
@@ -36,10 +36,11 @@ export const prestar = async (libroId,usuarioId) => {
         };
 };
 
-export const listar = (activos) => repo.listar(activos === 'true');
+export const listar = (activos,user) => repo.listar(activos === 'true', user.rol === 'lector' ? user.id: null );
 
 
-export const devolver = async (id,usuarioId) =>{
+// solo bibliotecario/admin llegan aquí (lo filtra la ruta) y pueden devolver cualquiera
+export const devolver = async (id) =>{
     // 1. validar el id
   const pid = validarId(id, 'ID');
 
@@ -54,11 +55,6 @@ export const devolver = async (id,usuarioId) =>{
 
     // 5. si no existe -> 404
     if (!prestamo) throw new AppError(404, 'Préstamo no encontrado');
-
-    // 5b. solo el dueño del préstamo puede devolverlo
-    if (prestamo.usuario_id !== usuarioId) {
-      throw new AppError(403, 'No puedes devolver un préstamo que no es tuyo');
-    }
 
     // 6. si ya tiene fecha_devolucion -> 409
     if (prestamo.fecha_devolucion !== null) {
@@ -85,9 +81,25 @@ export const devolver = async (id,usuarioId) =>{
   
 };
 
-export const obtener = async (id) => {
+export const obtener = async (id, user) => {
   const prestamo = await repo.buscarPorId(validarId(id, 'ID'));
   if(!prestamo) throw new AppError(404, "Prestamo no encontrado");
+  if (user.rol === 'lector' && prestamo.usuario_id !== user.id) {
+    throw new AppError(403, 'Solo puedes ver tus propios préstamos', 'PERMISO_DENEGADO');
+  }
   return prestamo;
 
 };
+
+const ROLES = ['lector', 'bibliotecario', 'admin'];
+
+export const cambiarRol = async (id,rol) => {
+  const usuarioId = validarId(id);
+  if(!ROLES.includes(rol)) throw new AppError(400, `El rol debe ser uno de: ${ROLES.join(', ')}`);
+  //evita que el ultimo admin se quite el rol a si mismo
+  if(!usuarioId === user.id && rol !== 'admin') throw new AppError(400, 'No puedes quitarte el rol de admin a ti mismo');
+
+  const usuario = await repo.cambiarRol(usuarioId,rol);
+  if(!usuario) throw new AppError(400, 'Usuario no encontrado');
+  return usuario;
+}

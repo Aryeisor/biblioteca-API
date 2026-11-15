@@ -54,7 +54,7 @@ export const login = async (email,password) => {
     };
 
     const token = jwt.sign(
-        { id: buscarUsuario.id },
+        { sub: buscarUsuario.id, rol: buscarUsuario.rol },
         config.jwtSecret,
         { expiresIn: config.jwtExpiresIn }
         );

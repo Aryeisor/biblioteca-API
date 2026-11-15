@@ -11,15 +11,18 @@ export default (req, res, next) => {
     };
     const token = header.split(' ')[1];
 
-    let payload; // payload es lo que metiste al firmar: { id, iat, exp }
+    let payload; // payload es lo que metiste al firmar: { sub, rol iat, exp }
     try {
         payload = jwt.verify(token, config.jwtSecret, { algorithms: ['HS256'] });
     } catch (err) {
         if (err.name === 'TokenExpiredError') {
             return next(new AppError(401, 'El token expiró', 'TOKEN_EXPIRADO'));
         }
-        return next(new AppError(401, 'Token inválido', 'TOKEN_INVALIDO'));
+        return next(new AppError(401, 'Token inválido', 'TOKEN_INVALIDO'));   
     };
-    req.userId = payload.id;
+    if (!payload.sub || !payload.rol){
+        return next(new AppError(401, 'Token inválido', 'TOKEN_INVALIDO'));
+    } 
+    req.user= {id: payload.sub, rol: payload.rol};
     next();
 };

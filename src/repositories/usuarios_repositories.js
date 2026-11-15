@@ -16,7 +16,7 @@ export const crearConPassword = async (nombre,email,passwordHash) =>{
 };
 
 export const buscarPorEmail = async (email) => {
-    const {rows} = await pool.query('SELECT id, nombre, email, password FROM usuarios WHERE email = $1', [email]);
+    const {rows} = await pool.query('SELECT id, nombre, email, password, rol FROM usuarios WHERE email = $1', [email]);
     return rows[0]
 };
 
@@ -28,4 +28,9 @@ export const actualizar = async(id, nombre, email) => {
 export const eliminar = async (id) => {
     const {rowCount} = await pool.query('DELETE FROM usuarios WHERE id = $1', [id]);
     return rowCount > 0;
+};
+
+export const cambiarRol = async (id, rol) => {
+    const {rows} = await pool.query('UPDATE usuarios SET rol = $1 WHERE id = $2 RETURNING id, nombre, email, rol, created_at', [rol, id]);
+    return rows[0];
 };
