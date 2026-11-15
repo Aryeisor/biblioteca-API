@@ -103,4 +103,14 @@ describe('Rate limiting', () => {
         assert.equal(res.status, 429);
         assert.equal(res.body.code, 'DEMASIADAS_PETICIONES');
     });
+
+    it('un X-Forwarded-For inventado no esquiva el límite por IP', async () => {
+        for (let i = 0; i < 20; i++) {
+            await api.post('/auth/login').set('X-Forwarded-For', `1.1.1.${i}`)
+                .send({ email: `u${i}@correo.com`, password: 'x' });
+        }
+        const res = await api.post('/auth/login').set('X-Forwarded-For', '1.1.1.99')
+            .send({ email: 'otro@correo.com', password: 'x' });
+        assert.equal(res.status, 429);
+    });
 });

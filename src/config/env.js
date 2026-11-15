@@ -22,6 +22,16 @@ const validarPort = (valor , nombre) =>{
     return n;
 };
 
+// TRUST_PROXY es opcional: sin proxy (tu PC) lo seguro es 0
+const validarTrustProxy = (valor = '0') => {
+    const n = Number(valor);
+    if (valor.trim() === '' || !Number.isInteger(n) || n < 0) {
+        console.error(`TRUST_PROXY invalido: "${valor}" (debe ser un entero >= 0)`);
+        process.exit(1);
+    }
+    return n;
+};
+
 if (process.env.JWT_SECRET.length < 32){
     console.error('JWT_SECRET demasiado corto: debe tener al menos 32 caracteres.');
     process.exit(1);
@@ -32,6 +42,7 @@ export const config = {
   jwtSecret: process.env.JWT_SECRET,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN,
   port: validarPort(process.env.PORT, 'PORT'),
+  trustProxy: validarTrustProxy(process.env.TRUST_PROXY),
   db:{
     host: process.env.DB_HOST,
     port: validarPort(process.env.DB_PORT, 'DB_PORT'),

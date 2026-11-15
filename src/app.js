@@ -5,8 +5,12 @@ import usuariosRoutes from './routes/usuarios.router.js';
 import prestamosRoutes from './routes/prestamos.router.js';
 import authRoutes from './routes/auth.router.js';
 import errorHandler from './middlewares/errorHandler.js';
+import { config } from './config/env.js';
 
 const app = express();
+
+// Nunca 'true': le creería a cualquier X-Forwarded-For que invente el cliente
+app.set('trust proxy', config.trustProxy);
 
 app.use(express.json())
 
