@@ -1,14 +1,8 @@
 import { AppError } from '../utils/AppError.js';
+import { validarId } from '../utils/validators.js';
 import * as repo from '../repositories/usuarios_repositories.js';
 
 
-const validarId = (id) => {
-  const n = Number(id);
-  if (!Number.isInteger(n) || n < 1) {
-    throw new AppError(400, 'ID inválido');
-  }
-  return n;
-};
 
 export const validarNombre = (nombre) => {
   if (typeof nombre !== 'string' || nombre.trim() === '') {

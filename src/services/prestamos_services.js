@@ -1,17 +1,12 @@
 import { AppError } from '../utils/AppError.js';
+import { validarId } from '../utils/validators.js';
 import pool from '../config/db.js';
 import * as librosrepo from '../repositories/libros_repositories.js';
 import * as usuariosrepo from '../repositories/usuarios_repositories.js';
 import * as repo from '../repositories/prestamos_repositories.js';
 
 //validar libro id y usuario id
-const validarId = (id, nombre = 'ID') => {
-  const n = Number(id);
-  if (!Number.isInteger(n) || n < 1) {
-    throw new AppError(400, `${nombre} inválido`);
-  }
-  return n;
-};
+
 
 
 export const prestar = async (libroId,usuarioId) => {

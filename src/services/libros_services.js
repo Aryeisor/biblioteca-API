@@ -1,14 +1,9 @@
 import * as repo from '../repositories/libros_repositories.js';
 import * as autoresRepo from '../repositories/autores_repositories.js';
 import { AppError } from '../utils/AppError.js';
+import { validarId } from '../utils/validators.js';
 
-const validarId = (id, nombre = 'ID') => {
-  const n = Number(id);
-  if (!Number.isInteger(n) || n < 1) {
-    throw new AppError(400,`${nombre} inválido`);
-  }
-  return n;
-};
+
 
 const validarLibro = ({ titulo, isbn, autorId, stock }) => {
   if (typeof titulo !== 'string' || titulo.trim() === '') {
