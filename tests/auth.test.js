@@ -1,5 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import jwt from 'jsonwebtoken';
+import { config } from '../src/config/env.js';
 import { api, limpiarTablas, cerrarPool } from './helpers.js';
 
 before(limpiarTablas);
@@ -57,5 +59,21 @@ describe('Autenticación', () => {
     it('GET /prestamos con token inválido da 401', async () => {
         const res = await api.get('/prestamos').set('Authorization', 'Bearer token-falso');
         assert.equal(res.status, 401);
+    });
+
+    it('token vencido da 401 TOKEN_EXPIRADO', async () => {
+        const vencido = jwt.sign({ id: 1, exp: Math.floor(Date.now() / 1000) - 60 }, config.jwtSecret);
+        const res = await api.get('/prestamos').set('Authorization', `Bearer ${vencido}`);
+        assert.equal(res.status, 401);
+        assert.equal(res.body.code, 'TOKEN_EXPIRADO');
+    });
+
+    it('token con la firma alterada da 401 TOKEN_INVALIDO', async () => {
+        const { body } = await api.post('/auth/login').send({ email: 'ana@correo.com', password: 'clave12345' });
+        const [header, payload, firma] = body.token.split('.');
+        const alterado = `${header}.${payload}.${firma.slice(0, -2)}xx`;
+        const res = await api.get('/prestamos').set('Authorization', `Bearer ${alterado}`);
+        assert.equal(res.status, 401);
+        assert.equal(res.body.code, 'TOKEN_INVALIDO');
     });
 });
