@@ -77,3 +77,30 @@ describe('Autenticación', () => {
         assert.equal(res.body.code, 'TOKEN_INVALIDO');
     });
 });
+
+describe('Rate limiting', () => {
+    it('el 6º intento con el mismo email (aunque cambien mayúsculas) da 429 con Retry-After', async () => {
+        const variantes = ['ana@correo.com', 'ANA@correo.com', 'Ana@Correo.com', ' ana@correo.com ', 'aNa@CORREO.com'];
+        for (const email of variantes) {
+            const res = await api.post('/auth/login').send({ email, password: 'incorrecta1' });
+            assert.equal(res.status, 401);
+        }
+        const res = await api.post('/auth/login').send({ email: 'ANA@CORREO.COM', password: 'clave12345' });
+        assert.equal(res.status, 429);
+        assert.equal(res.body.code, 'DEMASIADOS_INTENTOS');
+        assert.ok(Number(res.headers['retry-after']) > 0);
+    });
+
+    it('otro email no se ve afectado por el límite de ana', async () => {
+        for (let i = 0; i < 6; i++) await api.post('/auth/login').send({ email: 'ana@correo.com', password: 'x' });
+        const res = await api.post('/auth/login').send({ email: 'nadie@correo.com', password: 'clave12345' });
+        assert.equal(res.status, 401);
+    });
+
+    it('más de 20 peticiones desde la misma IP dan 429 DEMASIADAS_PETICIONES', async () => {
+        for (let i = 0; i < 20; i++) await api.post('/auth/login').send({ email: `u${i}@correo.com`, password: 'x' });
+        const res = await api.post('/auth/login').send({ email: 'otro@correo.com', password: 'x' });
+        assert.equal(res.status, 429);
+        assert.equal(res.body.code, 'DEMASIADAS_PETICIONES');
+    });
+});

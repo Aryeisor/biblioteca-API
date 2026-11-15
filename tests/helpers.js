@@ -1,6 +1,11 @@
+import { beforeEach } from 'node:test';
 import request from 'supertest';
 import app from '../src/app.js';
 import pool from '../src/config/db.js';
+import { reiniciarLimites } from '../src/middlewares/rateLimit.js';
+
+// Supertest usa siempre la misma IP: vaciar los contadores antes de cada test (límites reales, sin desactivarlos)
+beforeEach(reiniciarLimites);
 
 // Red de seguridad: nunca tocar la base real
 if (!process.env.DB_NAME?.endsWith('_test')) {
