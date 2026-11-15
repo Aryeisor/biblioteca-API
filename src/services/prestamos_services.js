@@ -90,16 +90,3 @@ export const obtener = async (id, user) => {
   return prestamo;
 
 };
-
-const ROLES = ['lector', 'bibliotecario', 'admin'];
-
-export const cambiarRol = async (id,rol) => {
-  const usuarioId = validarId(id);
-  if(!ROLES.includes(rol)) throw new AppError(400, `El rol debe ser uno de: ${ROLES.join(', ')}`);
-  //evita que el ultimo admin se quite el rol a si mismo
-  if(!usuarioId === user.id && rol !== 'admin') throw new AppError(400, 'No puedes quitarte el rol de admin a ti mismo');
-
-  const usuario = await repo.cambiarRol(usuarioId,rol);
-  if(!usuario) throw new AppError(400, 'Usuario no encontrado');
-  return usuario;
-}

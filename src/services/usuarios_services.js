@@ -56,6 +56,8 @@ export const actualizar = async (id, nombre, email, user) => {
 export const eliminar = async (id, user) => {
   const usuarioId = validarId(id);
   if (user.rol !== 'admin' && usuarioId !== user.id) throw new AppError(403, 'Solo puedes modificar tu propio usuario', 'PERMISO_DENEGADO');
+  // si un admin no puede quitarse el rol ni borrarse, siempre queda al menos uno
+  if (user.rol === 'admin' && usuarioId === user.id) throw new AppError(400, 'Un admin no puede borrarse a sí mismo; pídeselo a otro admin');
   const eliminado = await repo.eliminar(usuarioId);
   if (!eliminado) throw new AppError(404, 'Usuario no encontrado');
 };

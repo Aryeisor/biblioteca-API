@@ -48,8 +48,3 @@ export const marcarDevuelto = async(client, id) =>{
    await client.query(`UPDATE prestamos 
     SET fecha_devolucion = NOW() WHERE id = $1`, [id]); 
 };
-
-export const cambiarRol = async (id, rol) => {
-    const {rows} = await pool.query('UPDATE usuarios set = rol = $1 WHERE id = $2 RETURNING id, nombre, rol, created_at', [rol, id]);
-    return rows[0];
-};

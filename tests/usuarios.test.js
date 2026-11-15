@@ -87,6 +87,19 @@ describe('Usuarios', () => {
         assert.equal(res.status, 403);
     });
 
+    it('DELETE de un admin sobre sí mismo da 400 y el admin sigue existiendo', async () => {
+        const res = await api.delete(`/usuarios/${admin.id}`).set(bearer(admin));
+        assert.equal(res.status, 400);
+        const sigue = await api.get(`/usuarios/${admin.id}`).set(bearer(admin));
+        assert.equal(sigue.status, 200);
+    });
+
+    it('DELETE de un lector sobre sí mismo da 204', async () => {
+        const carla = await crearUsuarioConToken('Carla', 'carla@correo.com');
+        const res = await api.delete(`/usuarios/${carla.id}`).set(bearer(carla));
+        assert.equal(res.status, 204);
+    });
+
     it('DELETE de admin sobre otro usuario da 204', async () => {
         const res = await api.delete(`/usuarios/${beto.id}`).set(bearer(admin));
         assert.equal(res.status, 204);
