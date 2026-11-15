@@ -9,13 +9,17 @@ const SELECT_BASE = `
   JOIN usuarios u ON u.id = p.usuario_id
 `;
 
-export const listar = async (soloActivos = false) =>{
-  if(soloActivos){
-    const {rows} = await pool.query(`${SELECT_BASE} WHERE p.fecha_devolucion
-      IS NULL ORDER BY id `);
-    return rows;
+// usuarioId null = todos los usuarios
+export const listar = async (soloActivos = false, usuarioId = null) =>{
+  const condiciones = [];
+  const params = [];
+  if (soloActivos) condiciones.push('p.fecha_devolucion IS NULL');
+  if (usuarioId !== null) {
+    params.push(usuarioId);
+    condiciones.push(`p.usuario_id = $${params.length}`);
   }
-  const {rows} = await pool.query(`${SELECT_BASE} ORDER BY p.id`);
+  const where = condiciones.length ? `WHERE ${condiciones.join(' AND ')}` : '';
+  const {rows} = await pool.query(`${SELECT_BASE} ${where} ORDER BY p.id`, params);
   return rows;
 };
 

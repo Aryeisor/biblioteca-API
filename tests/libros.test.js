@@ -6,7 +6,7 @@ let token, autor, libro;
 
 before(async () => {
     await limpiarTablas();
-    ({ token } = await crearUsuarioConToken('Lector', 'lector@correo.com'));
+    ({ token } = await crearUsuarioConToken('Admin', 'admin@correo.com', undefined, 'admin'));
     autor = await crearAutor(token, 'Gabriel García Márquez');
     libro = await crearLibro(token, { titulo: 'Cien años de soledad', autorId: autor.id, stock: 3, isbn: '111' });
 });

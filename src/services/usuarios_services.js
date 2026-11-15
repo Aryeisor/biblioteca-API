@@ -34,15 +34,17 @@ export const validarEmail = (email) => {
 
 export const listar = () => repo.listar();
 
-export const obtener = async (id) => {
-  const usuario = await repo.buscarPorId(validarId(id));
+export const obtener = async (id, user) => {
+  const usuarioId = validarId(id);
+  if (user.rol === 'lector' && usuarioId !== user.id) throw new AppError(403, 'Solo puedes ver tu propio usuario', 'PERMISO_DENEGADO');
+  const usuario = await repo.buscarPorId(usuarioId);
   if (!usuario) throw new AppError(404, 'Usuario no encontrado');
   return usuario;
 };
 
-export const actualizar = async (id, nombre, email, userId) => {
+export const actualizar = async (id, nombre, email, user) => {
   const usuarioId = validarId(id);
-  if (usuarioId !== userId) throw new AppError(403, 'Solo puedes modificar tu propio usuario');
+  if (user.rol !== 'admin' && usuarioId !== user.id) throw new AppError(403, 'Solo puedes modificar tu propio usuario', 'PERMISO_DENEGADO');
   const nombreLimpio = validarNombre(nombre);
   const emailLimpio = validarEmail(email);
 
@@ -51,9 +53,24 @@ export const actualizar = async (id, nombre, email, userId) => {
   return usuario;
 };
 
-export const eliminar = async (id, userId) => {
+export const eliminar = async (id, user) => {
   const usuarioId = validarId(id);
-  if (usuarioId !== userId) throw new AppError(403, 'Solo puedes modificar tu propio usuario');
+  if (user.rol !== 'admin' && usuarioId !== user.id) throw new AppError(403, 'Solo puedes modificar tu propio usuario', 'PERMISO_DENEGADO');
+  // si un admin no puede quitarse el rol ni borrarse, siempre queda al menos uno
+  if (user.rol === 'admin' && usuarioId === user.id) throw new AppError(400, 'Un admin no puede borrarse a sí mismo; pídeselo a otro admin');
   const eliminado = await repo.eliminar(usuarioId);
   if (!eliminado) throw new AppError(404, 'Usuario no encontrado');
 };
+
+const ROLES = ['lector', 'bibliotecario', 'admin'];
+
+export const cambiarRol = async (id,rol,user) => {
+  const usuarioId = validarId(id);
+  if(!ROLES.includes(rol)) throw new AppError(400, `El rol debe ser uno de: ${ROLES.join(', ')}`);
+  //evita que el ultimo admin se quite el rol a si mismo
+  if(usuarioId === user.id && rol !== 'admin') throw new AppError(400, 'No puedes quitarte el rol de admin a ti mismo');
+
+  const usuario = await repo.cambiarRol(usuarioId,rol);
+  if(!usuario) throw new AppError(404, 'Usuario no encontrado');
+  return usuario;
+}

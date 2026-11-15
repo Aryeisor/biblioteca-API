@@ -14,8 +14,10 @@ export const limpiarTablas = () =>
 
 export const cerrarPool = () => pool.end();
 
-export const crearUsuarioConToken = async (nombre, email, password = 'clave12345') => {
+// rol se asigna por SQL (como el primer admin): la API siempre registra como lector
+export const crearUsuarioConToken = async (nombre, email, password = 'clave12345', rol) => {
     const { body: usuario } = await api.post('/auth/registrar').send({ nombre, email, password }).expect(201);
+    if (rol) await pool.query('UPDATE usuarios SET rol = $1 WHERE id = $2', [rol, usuario.id]);
     const { body } = await api.post('/auth/login').send({ email, password }).expect(200);
     return { id: usuario.id, token: body.token };
 };
