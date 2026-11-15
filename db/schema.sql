@@ -20,7 +20,10 @@ CREATE TABLE IF NOT EXISTS usuarios (
     nombre      VARCHAR(100) NOT NULL,
     email       VARCHAR(150) NOT NULL UNIQUE,
     password    VARCHAR(100),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- al final, igual que la deja la migración 001
+    rol         VARCHAR(20) NOT NULL DEFAULT 'lector'
+                CHECK (rol IN ('lector', 'bibliotecario', 'admin'))
 );
 
 CREATE TABLE IF NOT EXISTS prestamos (
