@@ -58,6 +58,14 @@ describe('Libros: creación', () => {
         assert.equal(res.status, 400);
     });
 
+    it('un JSON mal formado da 400', async () => {
+        const res = await api
+            .post('/libros')
+            .set('Content-Type', 'application/json')
+            .send('{ "titulo": ');      // string crudo, no un objeto
+        assert.equal(res.status,400)
+    });
+
     it('POST /libros con autorId inexistente da 404', async () => {
         const res = await api.post('/libros').set(auth()).send({ titulo: 'Huérfano', autorId: 9999 });
         assert.equal(res.status, 404);

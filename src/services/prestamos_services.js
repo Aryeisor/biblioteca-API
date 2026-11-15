@@ -1,16 +1,12 @@
+import { AppError } from '../utils/AppError.js';
+import { validarId } from '../utils/validators.js';
 import pool from '../config/db.js';
 import * as librosrepo from '../repositories/libros_repositories.js';
 import * as usuariosrepo from '../repositories/usuarios_repositories.js';
 import * as repo from '../repositories/prestamos_repositories.js';
 
 //validar libro id y usuario id
-const validarId = (id, nombre = 'ID') => {
-  const n = Number(id);
-  if (!Number.isInteger(n) || n < 1) {
-    throw { status: 400, message: `${nombre} inválido` };
-  }
-  return n;
-};
+
 
 
 export const prestar = async (libroId,usuarioId) => {
@@ -18,14 +14,14 @@ export const prestar = async (libroId,usuarioId) => {
     const uid = validarId (usuarioId, "usuarioId");
 
     const usuario = await usuariosrepo.buscarPorId(uid);
-        if (!usuario) throw { status: 404, message: 'Usuario no encontrado' };
+        if (!usuario) throw new AppError(404, 'Usuario no encontrado');
 
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
             const libro = await librosrepo.bloquearPorId(client,lid);
-            if(!libro) throw ({status:404, message: 'Libro no encontrado'})
-            if(libro.stock < 1) throw ({status:409, message: 'No hay stock suficiente'});
+            if(!libro) throw new AppError (404,'Libro no encontrado')
+            if(libro.stock < 1) throw new AppError(409,'No hay stock suficiente');
             
             await librosrepo.cambiarStock(client, lid, -1);
             const { id } = await repo.crear(client, lid, uid);
@@ -57,16 +53,16 @@ export const devolver = async (id,usuarioId) =>{
     const prestamo = await repo.bloquearPorId(client, pid);
 
     // 5. si no existe -> 404
-    if (!prestamo) throw { status: 404, message: 'Préstamo no encontrado' };
+    if (!prestamo) throw new AppError(404, 'Préstamo no encontrado');
 
     // 5b. solo el dueño del préstamo puede devolverlo
     if (prestamo.usuario_id !== usuarioId) {
-      throw { status: 403, message: 'No puedes devolver un préstamo que no es tuyo' };
+      throw new AppError(403, 'No puedes devolver un préstamo que no es tuyo');
     }
 
     // 6. si ya tiene fecha_devolucion -> 409
     if (prestamo.fecha_devolucion !== null) {
-      throw { status: 409, message: 'El préstamo ya fue devuelto' };
+      throw new AppError(409, 'El préstamo ya fue devuelto');
     }
 
     // 7. marcarlo como devuelto
@@ -91,7 +87,7 @@ export const devolver = async (id,usuarioId) =>{
 
 export const obtener = async (id) => {
   const prestamo = await repo.buscarPorId(validarId(id, 'ID'));
-  if(!prestamo) throw {status: 404 , message: "Prestamo no encontrado"};
+  if(!prestamo) throw new AppError(404, "Prestamo no encontrado");
   return prestamo;
 
 };
