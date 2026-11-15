@@ -1,4 +1,3 @@
-//importar primero el dotenv para que se ejecute en orden y no se ejecuten errorres
 import app from './app.js'
 import pool from './config/db.js'
 import { config } from './config/env.js'

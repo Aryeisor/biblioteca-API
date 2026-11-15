@@ -12,7 +12,7 @@ if (faltantes.length > 0) {
   console.error(`❌ Faltan variables de entorno: ${faltantes.join(', ')}`);
   process.exit(1);
 }
-
+//validar que el puerto sea un numero entre 1 y 65535
 const validarPort = (valor , nombre) =>{
     const n = Number(valor);
     if(!Number.isInteger(n) || n < 1 || n > 65535){
