@@ -31,6 +31,9 @@ Node.js · Express 5 · PostgreSQL · pg · bcryptjs · jsonwebtoken · ES Modul
    ```env
    PORT=3000
 
+   # Proxies tuyos delante de la app: 0 en local, 1 detrás de Nginx/balanceador
+   TRUST_PROXY=0
+
    DB_HOST=localhost
    DB_PORT=5432
    DB_USER=postgres
@@ -51,9 +54,10 @@ Node.js · Express 5 · PostgreSQL · pg · bcryptjs · jsonwebtoken · ES Modul
 
    Al arrancar, `src/config/env.js` valida la configuración y la app se detiene con un mensaje claro si algo está mal:
 
-   - Todas las variables de arriba son obligatorias; si falta alguna, indica cuáles.
+   - Todas las variables de arriba son obligatorias, salvo `TRUST_PROXY`; si falta alguna, indica cuáles.
    - `PORT` y `DB_PORT` deben ser enteros entre 1 y 65535.
    - `JWT_SECRET` debe tener al menos 32 caracteres.
+   - `TRUST_PROXY` es opcional (por defecto `0`) y debe ser un entero ≥ 0. Ver [IP real detrás de un proxy](#ip-real-detrás-de-un-proxy-trust_proxy).
 
 4. Crear la base de datos en PostgreSQL (desde psql o pgAdmin):
 
@@ -150,9 +154,12 @@ Los tests usan el test runner nativo de Node (`node:test` con `node:assert/stric
 
 Como protección, tanto `npm run db:init:test` como los tests se niegan a correr si `DB_NAME` no termina en `_test`.
 
-Actualmente hay **47 tests** que cubren:
+Supertest hace todas las peticiones desde la misma IP, así que los tests chocarían con el [rate limiting](#rate-limiting). En vez de desactivarlo, `tests/helpers.js` llama a `reiniciarLimites()` en un `beforeEach`: cada test empieza con los contadores en 0 y se prueba con los límites reales.
+
+Actualmente hay **67 tests** que cubren:
 
 - **Autenticación**: registro (email en minúsculas, sin password en la respuesta, email repetido, contraseña corta, email inválido), login correcto e incorrecto (mismo mensaje 401), rutas protegidas sin token o con token inválido, token vencido (`TOKEN_EXPIRADO`) y token con la firma alterada (`TOKEN_INVALIDO`).
+- **Rate limiting**: el 6.º intento con el mismo email (aunque cambien mayúsculas o espacios) da 429 con `Retry-After`, bloquear un email no afecta a otro, el límite por IP, y un `X-Forwarded-For` inventado no esquiva el límite.
 - **Autores**: validación del body.
 - **Libros**: rutas públicas y protegidas, autor inexistente, stock negativo, ISBN repetido, JSON mal formado (400), `PATCH /libros/:id/stock` y filtro por título.
 - **Usuarios**: todas las rutas requieren token, nunca se devuelve el password, y `PUT`/`DELETE` sobre otro usuario responden 403.
@@ -172,7 +179,29 @@ La API usa JWT. Las contraseñas se guardan como hash con bcrypt y nunca se devu
 | POST   | `/auth/login`     | Inicia sesión y devuelve un token | `{ "email": "ana@correo.com", "password": "unaClaveSegura" }` |
 
 - `POST /auth/registrar` responde `201` con el usuario creado, sin password (`id`, `nombre`, `email`, `created_at`). Reglas: `nombre` y `email` igual que en usuarios; `password` obligatorio, entre 8 y 72 caracteres (72 es el límite de bcrypt); email único (si se repite responde 409).
-- `POST /auth/login` responde `200` con `{ "token": "..." }`. Si falta el email o la contraseña responde 400. Si el email no existe o la contraseña no coincide responde `401` con `{ "message": "Credenciales invalidas" }`: es el mismo mensaje en ambos casos a propósito, para no revelar qué emails están registrados.
+- `POST /auth/login` responde `200` con `{ "token": "..." }`. Si falta el email o la contraseña responde 400. Si el email no existe o la contraseña no coincide responde `401` con `{ "message": "Credenciales invalidas" }`: es el mismo mensaje en ambos casos a propósito, para no revelar qué emails están registrados. Por la misma razón, ambos casos **tardan lo mismo**: si el email no existe, se ejecuta igual un `bcrypt.compare` contra un hash ficticio (calculado una sola vez al cargar el módulo, con el mismo costo que los hashes reales). Sin esto, la respuesta rápida delataría qué emails no existen.
+
+### Rate limiting
+
+Las rutas de `/auth` tienen límite de intentos para frenar la fuerza bruta ([src/middlewares/rateLimit.js](src/middlewares/rateLimit.js), ventana fija):
+
+| Ruta                   | Clave                          | Límite         | `code` al superarlo     |
+|------------------------|--------------------------------|----------------|-------------------------|
+| `POST /auth/login`     | IP                             | 20 cada 15 min | `DEMASIADAS_PETICIONES` |
+| `POST /auth/login`     | email (sin espacios y en minúsculas) | 5 cada 15 min  | `DEMASIADOS_INTENTOS`   |
+| `POST /auth/registrar` | IP                             | 10 cada hora   | `DEMASIADOS_REGISTROS`  |
+
+Al superar el límite responde `429` con el header `Retry-After` (segundos que faltan para que se reinicie la ventana). Un proceso periódico borra los contadores vencidos para que la memoria no crezca sin límite.
+
+Limitación: los contadores viven en la memoria del proceso. Se pierden al reiniciar la API y no se comparten entre varias instancias (con 3 instancias detrás de un balanceador, el límite real se triplica). Para eso habría que guardarlos en Redis.
+
+### IP real detrás de un proxy (`TRUST_PROXY`)
+
+El límite por IP usa `req.ip`. Detrás de un Nginx o balanceador, todas las peticiones llegarían con la IP del proxy y todos los usuarios compartirían el mismo contador. `app.set('trust proxy', config.trustProxy)` le dice a Express cuántos proxies debe creer al leer `X-Forwarded-For`:
+
+- `0` (por defecto): sin proxy, como en local. Ignora `X-Forwarded-For`.
+- `1`: detrás de un Nginx o balanceador que tú controlas.
+- Nunca `true`: Express le creería a cualquier `X-Forwarded-For`, incluso al que inventa el cliente, y el límite por IP dejaría de servir.
 
 ### Cómo usar el token
 
@@ -296,6 +325,7 @@ Todos los errores responden con `{ "message": "..." }`, y algunos incluyen adem�
 | 403    | Acción sobre recursos de otro usuario (modificar/eliminar otro usuario o devolver un préstamo ajeno) |
 | 404    | El registro o la ruta no existe                               |
 | 409    | Valor duplicado (ej. ISBN o email repetido), se intenta borrar un registro relacionado (ej. un autor con libros), libro sin stock o préstamo ya devuelto |
+| 429    | Demasiados intentos en `/auth` (ver [rate limiting](#rate-limiting)); incluye el header `Retry-After` |
 | 500    | Error interno del servidor                                    |
 
 Valores de `code`:
@@ -309,6 +339,9 @@ Valores de `code`:
 | `PETICION_INVALIDA`    | 4xx    | Otros errores de la petición detectados por Express (ej. cuerpo demasiado grande) |
 | `REGISTRO_DUPLICADO`   | 409    | Valor único repetido (ISBN, email) |
 | `REGISTRO_RELACIONADO` | 409    | El registro está relacionado con otros datos (ej. borrar un autor con libros) |
+| `DEMASIADAS_PETICIONES`| 429    | Más de 20 logins desde la misma IP en 15 min |
+| `DEMASIADOS_INTENTOS`  | 429    | Más de 5 logins con el mismo email en 15 min |
+| `DEMASIADOS_REGISTROS` | 429    | Más de 10 registros desde la misma IP en 1 hora |
 
 Internamente, los services lanzan `AppError(status, message, code)` ([src/utils/AppError.js](src/utils/AppError.js)) y el middleware [errorHandler.js](src/middlewares/errorHandler.js) lo convierte en la respuesta HTTP.
 
@@ -344,8 +377,8 @@ src/
     auth_services.js, autores_services.js, libros_services.js, prestamos_services.js, usuarios_services.js
   repositories/       # consultas SQL
     autores_repositories.js, libros_repositories.js, prestamos_repositories.js, usuarios_repositories.js
-  middlewares/        # verificación del token JWT y manejo de errores
-    auth.js, errorHandler.js
+  middlewares/        # token JWT, roles, rate limiting y manejo de errores
+    auth.js, authorize.js, rateLimit.js, errorHandler.js
   utils/              # código compartido
     AppError.js       # error con status HTTP y code
     validators.js     # validarId, usado por todos los services
@@ -361,3 +394,5 @@ docker-compose.yml    # servicios api y db (PostgreSQL 17) con volumen de datos
 - [x] Autenticación con JWT y bcrypt
 - [x] Tests con Supertest
 - [x] Docker Compose para levantar la API y PostgreSQL
+- [x] Rate limiting en `/auth` y protección contra enumeración de usuarios
+- [ ] Guardar los contadores del rate limiting en Redis (para varias instancias)
