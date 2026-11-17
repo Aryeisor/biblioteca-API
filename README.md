@@ -161,9 +161,9 @@ Actualmente hay **67 tests** que cubren:
 - **Autenticación**: registro (email en minúsculas, sin password en la respuesta, email repetido, contraseña corta, email inválido), login correcto e incorrecto (mismo mensaje 401), rutas protegidas sin token o con token inválido, token vencido (`TOKEN_EXPIRADO`) y token con la firma alterada (`TOKEN_INVALIDO`).
 - **Rate limiting**: el 6.º intento con el mismo email (aunque cambien mayúsculas o espacios) da 429 con `Retry-After`, bloquear un email no afecta a otro, el límite por IP, y un `X-Forwarded-For` inventado no esquiva el límite.
 - **Autores**: validación del body.
-- **Libros**: rutas públicas y protegidas, autor inexistente, stock negativo, ISBN repetido, JSON mal formado (400), `PATCH /libros/:id/stock` y filtro por título.
-- **Usuarios**: todas las rutas requieren token, nunca se devuelve el password, y `PUT`/`DELETE` sobre otro usuario responden 403.
-- **Préstamos**: el usuario se toma del token, el stock baja al prestar y sube al devolver, sin stock responde 409, un préstamo solo se puede devolver una vez (409 y el stock no vuelve a subir) y solo por su dueño (403).
+- **Libros**: rutas públicas y protegidas, autor inexistente, stock negativo, ISBN repetido, JSON mal formado (400), `PATCH /libros/:id/stock`, filtro por título y paginación (páginas distintas, total con filtro, límite inválido y página fuera de rango).
+- **Usuarios**: todas las rutas requieren token, nunca se devuelve el password, y `PUT`/`DELETE` sobre otro usuario responden 403; paginación por offset (páginas distintas, página fuera de rango con el total real y parámetros inválidos).
+- **Préstamos**: el usuario se toma del token, el stock baja al prestar y sube al devolver, sin stock responde 409, un préstamo solo se puede devolver una vez (409 y el stock no vuelve a subir) y solo por su dueño (403); paginación con cursor (recorrer todas las páginas sin repetidos ni faltantes, combinada con `activos=true` y con el filtro del lector, cursor inválido).
 - **Concurrencia**: con un libro de stock 1, dos préstamos simultáneos de usuarios distintos no pueden ocurrir a la vez: uno responde 201, el otro 409 y el stock queda en 0.
 - **Peticiones sin body**: responden 400 en vez de 500.
 
@@ -251,8 +251,9 @@ Reglas: `nombre` obligatorio (máx. 100 caracteres).
 
 | Método | Ruta                    | Descripción                                   | Body |
 |--------|-------------------------|-----------------------------------------------|------|
-| GET    | `/libros`               | Lista todos los libros (con nombre del autor) | —    |
+| GET    | `/libros`               | Lista los libros paginados (con nombre del autor) | —    |
 | GET    | `/libros?titulo=cien`   | Filtra por título (sin distinguir mayúsculas) | —    |
+| GET    | `/libros?pagina=2&limite=10` | Página concreta (se combina con `titulo`) | —    |
 | GET    | `/libros/:id`           | Obtiene un libro                              | —    |
 | POST   | `/libros`               | Crea un libro                                 | `{ "titulo": "Cien años de soledad", "isbn": "978-0307474728", "autorId": 1, "stock": 3 }` |
 | PUT    | `/libros/:id`           | Actualiza un libro                            | Igual que POST |
@@ -261,11 +262,34 @@ Reglas: `nombre` obligatorio (máx. 100 caracteres).
 
 Reglas: `titulo` obligatorio (máx. 200 caracteres); `isbn` opcional y único (máx. 20); `autorId` debe existir (si no, 404); `stock` entero ≥ 0, por defecto 0 (en el PATCH es obligatorio).
 
+#### Paginación de `GET /libros`
+
+| Parámetro | Tipo | Por defecto | Reglas |
+|-----------|------|-------------|--------|
+| `pagina`  | entero | `1`  | ≥ 1 |
+| `limite`  | entero | `20` | entre 1 y 100 |
+
+Un valor fuera de rango o que no sea entero (ej. `limite=5000`, `pagina=abc`) responde **400**; no se recorta en silencio, para que el cliente sepa que pidió algo inválido.
+
+La respuesta es un objeto con los datos de la página y la información para navegar:
+
+```json
+{
+  "data": [
+    { "id": 1, "titulo": "Cien años de soledad", "isbn": "111", "stock": 3, "autor_id": 1, "autor": "Gabriel García Márquez" }
+  ],
+  "paginacion": { "pagina": 1, "limite": 20, "total": 13, "totalPaginas": 1 }
+}
+```
+
+- `total` cuenta los libros que cumplen el filtro `titulo`, no solo los de la página.
+- Pedir una página que no existe (ej. `pagina=99`) responde 200 con `data: []` y el `total` real.
+
 ### Usuarios — `/usuarios`
 
 | Método | Ruta             | Descripción              | Body |
 |--------|------------------|--------------------------|------|
-| GET    | `/usuarios`      | Lista todos los usuarios | —    |
+| GET    | `/usuarios`      | Lista los usuarios paginados (`?pagina=2&limite=10`) | —    |
 | GET    | `/usuarios/:id`  | Obtiene un usuario       | —    |
 | PUT    | `/usuarios/:id`  | Actualiza tu propio usuario | `{ "nombre": "Ana Pérez", "email": "ana@correo.com" }` |
 | DELETE | `/usuarios/:id`  | Elimina tu propio usuario   | —    |
@@ -274,12 +298,15 @@ El alta de usuarios se hace con `POST /auth/registrar`. Todas las rutas requiere
 
 Reglas: `nombre` obligatorio (máx. 100 caracteres); `email` obligatorio, con formato válido, único (máx. 150) y se guarda en minúsculas.
 
+`GET /usuarios` se pagina por offset igual que `GET /libros`: mismos parámetros (`pagina`, `limite`), mismas reglas y misma respuesta `{ data, paginacion }` (ver [paginación de libros](#paginación-de-get-libros)). Ordena por `id`.
+
 ### Préstamos — `/prestamos`
 
 | Método | Ruta                       | Descripción                                        | Body |
 |--------|----------------------------|----------------------------------------------------|------|
-| GET    | `/prestamos`               | Lista todos los préstamos (con título y usuario)   | —    |
+| GET    | `/prestamos`               | Lista los préstamos paginados, del más reciente al más viejo (con título y usuario) | —    |
 | GET    | `/prestamos?activos=true`  | Lista solo los préstamos no devueltos              | —    |
+| GET    | `/prestamos?cursor=...&limite=10` | Página siguiente (se combina con `activos`) | —    |
 | GET    | `/prestamos/:id`           | Obtiene un préstamo                                | —    |
 | POST   | `/prestamos`               | Presta un libro al usuario autenticado (descuenta 1 de stock) | `{ "libroId": 1 }` |
 | PATCH  | `/prestamos/:id/devolver`  | Marca tu préstamo como devuelto (suma 1 al stock)  | —    |
@@ -301,6 +328,29 @@ Ejemplo de respuesta de `POST /prestamos` (`201 Created`):
 ```
 
 `fecha_devolucion: null` significa que el préstamo sigue activo (el libro no se ha devuelto).
+
+#### Paginación de `GET /prestamos` (cursor)
+
+El historial de préstamos crece todos los días, así que se pagina con **cursor** en vez de `pagina`: cada respuesta dice dónde seguir y los préstamos nuevos no desplazan las páginas que ya se leyeron.
+
+| Parámetro | Tipo | Por defecto | Reglas |
+|-----------|------|-------------|--------|
+| `limite`  | entero | `20` | entre 1 y 100; si no, **400** |
+| `cursor`  | texto  | — (primera página) | el `siguienteCursor` de la respuesta anterior; si no es válido, **400** con `code: "CURSOR_INVALIDO"` |
+
+```json
+{
+  "data": [
+    { "id": 42, "fecha_prestamo": "2026-11-17T15:02:11.000Z", "fecha_devolucion": null, "libro_id": 3, "libro": "Ficciones", "usuario_id": 1, "usuario": "Ana" }
+  ],
+  "paginacion": { "limite": 20, "siguienteCursor": "eyJpZCI6NDJ9" }
+}
+```
+
+- Para la página siguiente se repite la misma petición (con los mismos filtros) agregando `cursor=<siguienteCursor>`. Cuando `siguienteCursor` es `null`, no hay más páginas.
+- El cursor es **opaco**: hay que usarlo tal cual, sin construirlo ni interpretarlo. Su contenido puede cambiar (por ejemplo, si el orden pasa a ser por fecha).
+- No hay `total` ni `totalPaginas`: contar todo el historial en cada petición sería caro, y un historial no se navega saltando a "la página 7".
+- Un lector solo pagina sus propios préstamos; el filtro por usuario se aplica junto con el cursor.
 
 ### Respuestas exitosas
 
@@ -336,6 +386,7 @@ Valores de `code`:
 | `TOKEN_EXPIRADO`       | 401    | El token venció |
 | `TOKEN_INVALIDO`       | 401    | El token es inválido |
 | `JSON_INVALIDO`        | 400    | El cuerpo de la petición no es un JSON válido |
+| `CURSOR_INVALIDO`      | 400    | El `cursor` de `GET /prestamos` no es válido (no salió de una respuesta de la API) |
 | `PETICION_INVALIDA`    | 4xx    | Otros errores de la petición detectados por Express (ej. cuerpo demasiado grande) |
 | `REGISTRO_DUPLICADO`   | 409    | Valor único repetido (ISBN, email) |
 | `REGISTRO_RELACIONADO` | 409    | El registro está relacionado con otros datos (ej. borrar un autor con libros) |

@@ -9,8 +9,10 @@ const SELECT_BASE = `
   JOIN usuarios u ON u.id = p.usuario_id
 `;
 
-// usuarioId null = todos los usuarios
-export const listar = async (soloActivos = false, usuarioId = null) =>{
+// usuarioId null = todos los usuarios. cursorId null = primera página.
+// Orden del más reciente al más viejo: la página siguiente son los ids MENORES que el último visto.
+// Pide limite + 1 filas: si llega la extra, el servicio sabe que hay otra página sin hacer un COUNT.
+export const listar = async (soloActivos = false, usuarioId = null, cursorId = null, limite = 20) =>{
   const condiciones = [];
   const params = [];
   if (soloActivos) condiciones.push('p.fecha_devolucion IS NULL');
@@ -18,8 +20,13 @@ export const listar = async (soloActivos = false, usuarioId = null) =>{
     params.push(usuarioId);
     condiciones.push(`p.usuario_id = $${params.length}`);
   }
+  if (cursorId !== null) {
+    params.push(cursorId);
+    condiciones.push(`p.id < $${params.length}`);
+  }
   const where = condiciones.length ? `WHERE ${condiciones.join(' AND ')}` : '';
-  const {rows} = await pool.query(`${SELECT_BASE} ${where} ORDER BY p.id`, params);
+  params.push(limite + 1);
+  const {rows} = await pool.query(`${SELECT_BASE} ${where} ORDER BY p.id DESC LIMIT $${params.length}`, params);
   return rows;
 };
 

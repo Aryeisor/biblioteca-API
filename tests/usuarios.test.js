@@ -35,9 +35,32 @@ describe('Usuarios', () => {
     it('GET /usuarios como bibliotecario da 200 y sin campo password', async () => {
         const res = await api.get('/usuarios').set(bearer(biblio));
         assert.equal(res.status, 200);
-        assert.equal(res.body.length, 4);
-        assert.ok(res.body.every((u) => !('password' in u)));
+        assert.equal(res.body.data.length, 4);
+        assert.ok(res.body.data.every((u) => !('password' in u) && !('total' in u)));
+        assert.deepEqual(res.body.paginacion, { pagina: 1, limite: 20, total: 4, totalPaginas: 1 });
     });
+
+    it('GET /usuarios pagina: la página 1 y la 2 traen usuarios distintos', async () => {
+        const p1 = await api.get('/usuarios').query({ pagina: 1, limite: 3 }).set(bearer(biblio));
+        const p2 = await api.get('/usuarios').query({ pagina: 2, limite: 3 }).set(bearer(biblio));
+        assert.deepEqual(p1.body.data.map((u) => u.id), [ana.id, beto.id, biblio.id]);
+        assert.deepEqual(p2.body.data.map((u) => u.id), [admin.id]);
+        assert.deepEqual(p2.body.paginacion, { pagina: 2, limite: 3, total: 4, totalPaginas: 2 });
+    });
+
+    it('GET /usuarios con una página que no existe da data vacía y el total real', async () => {
+        const res = await api.get('/usuarios').query({ pagina: 99 }).set(bearer(biblio));
+        assert.equal(res.status, 200);
+        assert.deepEqual(res.body.data, []);
+        assert.equal(res.body.paginacion.total, 4);
+    });
+
+    for (const query of [{ limite: 5000 }, { limite: 0 }, { pagina: 0 }, { pagina: 'abc' }]) {
+        it(`GET /usuarios rechaza ${JSON.stringify(query)} con 400`, async () => {
+            const res = await api.get('/usuarios').query(query).set(bearer(biblio));
+            assert.equal(res.status, 400);
+        });
+    }
 
     it('GET /usuarios/:id del propio lector da 200', async () => {
         const res = await api.get(`/usuarios/${ana.id}`).set(bearer(ana));

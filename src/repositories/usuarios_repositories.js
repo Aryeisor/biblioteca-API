@@ -1,7 +1,9 @@
 import pool from "../config/db.js";
 
-export const listar = async() => {
-    const {rows} = await pool.query('SELECT id, nombre, email ,created_at FROM usuarios ORDER BY id');
+// COUNT(*) OVER(): total de usuarios antes del LIMIT, repetido en cada fila. limite null = LIMIT ALL.
+export const listar = async(limite = null, offset = 0) => {
+    const {rows} = await pool.query(`SELECT id, nombre, email, created_at, COUNT(*) OVER() AS total
+     FROM usuarios ORDER BY id LIMIT $1 OFFSET $2`, [limite, offset]);
     return rows;
 };
 

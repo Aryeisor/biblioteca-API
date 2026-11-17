@@ -1,5 +1,5 @@
 import { AppError } from '../utils/AppError.js';
-import { validarId } from '../utils/validators.js';
+import { validarId, validarEntero } from '../utils/validators.js';
 import pool from '../config/db.js';
 import * as librosrepo from '../repositories/libros_repositories.js';
 import * as usuariosrepo from '../repositories/usuarios_repositories.js';
@@ -36,7 +36,37 @@ export const prestar = async (libroId,usuarioIdBody,user) => {
         };
 };
 
-export const listar = (activos,user) => repo.listar(activos === 'true', user.rol === 'lector' ? user.id: null );
+// Cursor opaco: el cliente no ve un id sino {"id":N} en Base64url. Si mañana se ordena por fecha,
+// se cambia lo que va dentro sin romper a nadie, porque ningún cliente armaba cursores a mano.
+const codificarCursor = (id) => Buffer.from(JSON.stringify({ id })).toString('base64url');
+
+const decodificarCursor = (cursor) => {
+  if (cursor === undefined) return null;
+  try {
+    const { id } = JSON.parse(Buffer.from(cursor, 'base64url').toString());
+    return validarId(id);
+  } catch {
+    // cualquier fallo (no es Base64, no es JSON, id no válido) es el mismo error para el cliente
+    throw new AppError(400, 'Cursor inválido', 'CURSOR_INVALIDO');
+  }
+};
+
+export const listar = async ({ activos, cursor, limite } = {}, user) => {
+  const limiteNum = validarEntero(limite, 'limite', 1, 100, 20);
+  const cursorId = decodificarCursor(cursor);
+
+  const filas = await repo.listar(activos === 'true', user.rol === 'lector' ? user.id : null, cursorId, limiteNum);
+
+  const hayMas = filas.length > limiteNum;
+  const data = hayMas ? filas.slice(0, limiteNum) : filas; // la fila extra solo avisa, no se devuelve
+  return {
+    data,
+    paginacion: {
+      limite: limiteNum,
+      siguienteCursor: hayMas ? codificarCursor(data.at(-1).id) : null,
+    },
+  };
+};
 
 
 // solo bibliotecario/admin llegan aquí (lo filtra la ruta) y pueden devolver cualquiera

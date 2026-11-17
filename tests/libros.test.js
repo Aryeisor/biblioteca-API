@@ -18,8 +18,10 @@ describe('Libros: lectura pública', () => {
     it('GET /libros es público y devuelve 200', async () => {
         const res = await api.get('/libros');
         assert.equal(res.status, 200);
-        assert.ok(Array.isArray(res.body));
-        assert.equal(res.body.length, 1);
+        assert.ok(Array.isArray(res.body.data));
+        assert.equal(res.body.data.length, 1);
+        assert.equal(res.body.data[0].total, undefined);
+        assert.deepEqual(res.body.paginacion, { pagina: 1, limite: 20, total: 1, totalPaginas: 1 });
     });
 
     it('GET /libros/:id es público y devuelve 200', async () => {
@@ -114,13 +116,55 @@ describe('Libros: filtro por título', () => {
     it('GET /libros?titulo= filtra sin distinguir mayúsculas', async () => {
         const res = await api.get('/libros').query({ titulo: 'CIEN' });
         assert.equal(res.status, 200);
-        assert.equal(res.body.length, 1);
-        assert.equal(res.body[0].titulo, 'Cien años de soledad');
+        assert.equal(res.body.data.length, 1);
+        assert.equal(res.body.data[0].titulo, 'Cien años de soledad');
     });
 
     it('GET /libros?titulo= sin coincidencias devuelve lista vacía', async () => {
         const res = await api.get('/libros').query({ titulo: 'no-existe' });
         assert.equal(res.status, 200);
-        assert.deepEqual(res.body, []);
+        assert.deepEqual(res.body.data, []);
+        assert.equal(res.body.paginacion.total, 0);
+        assert.equal(res.body.paginacion.totalPaginas, 0);
     });
+});
+
+describe('Libros: paginación', () => {
+    // Para este punto ya hay 2 libros: el del before y el creado en "creación".
+    it('la página 1 y la 2 traen libros distintos', async () => {
+        const p1 = await api.get('/libros').query({ pagina: 1, limite: 1 });
+        const p2 = await api.get('/libros').query({ pagina: 2, limite: 1 });
+        assert.equal(p1.body.data.length, 1);
+        assert.equal(p2.body.data.length, 1);
+        assert.notEqual(p1.body.data[0].id, p2.body.data[0].id);
+    });
+
+    it('el total cuenta solo los libros que cumplen el filtro, no la página', async () => {
+        const res = await api.get('/libros').query({ titulo: 'cien', limite: 1 });
+        assert.equal(res.status, 200);
+        assert.equal(res.body.paginacion.total, 1);    // hay 2 libros, solo 1 coincide
+        assert.equal(res.body.paginacion.totalPaginas, 1);
+    });
+
+    it('limite=1 parte los resultados en páginas', async () => {
+        const res = await api.get('/libros').query({ pagina: 2, limite: 1 });
+        assert.equal(res.status, 200);
+        assert.equal(res.body.data.length, 1);
+        assert.equal(res.body.data[0].titulo, 'El amor en los tiempos del cólera');
+        assert.deepEqual(res.body.paginacion, { pagina: 2, limite: 1, total: 2, totalPaginas: 2 });
+    });
+
+    it('una página fuera de rango devuelve data vacía pero el total real', async () => {
+        const res = await api.get('/libros').query({ pagina: 99, limite: 1 });
+        assert.equal(res.status, 200);
+        assert.deepEqual(res.body.data, []);
+        assert.equal(res.body.paginacion.total, 2);
+    });
+
+    for (const query of [{ limite: 5000 }, { limite: 0 }, { pagina: 0 }, { pagina: 'abc' }, { limite: 1.5 }]) {
+        it(`rechaza ${JSON.stringify(query)} con 400`, async () => {
+            const res = await api.get('/libros').query(query);
+            assert.equal(res.status, 400);
+        });
+    }
 });

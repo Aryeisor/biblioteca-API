@@ -2,6 +2,7 @@ import * as repo from '../repositories/libros_repositories.js';
 import * as autoresRepo from '../repositories/autores_repositories.js';
 import { AppError } from '../utils/AppError.js';
 import { validarId } from '../utils/validators.js';
+import { paginarOffset } from '../utils/paginacion.js';
 
 
 
@@ -52,7 +53,10 @@ export const actualizarStock = async (id, stock) => {
   return repo.buscarPorId(libroId);
 };
 
-export const listar = (titulo) => repo.listar(titulo?.trim() || null);
+export const listar = ({ titulo, pagina, limite } = {}) => {
+  const filtro = titulo?.trim() || null;
+  return paginarOffset({ pagina, limite }, (lim, offset) => repo.listar(filtro, lim, offset));
+};
 
 export const obtener = async (id) => {
   const libro = await repo.buscarPorId(validarId(id));

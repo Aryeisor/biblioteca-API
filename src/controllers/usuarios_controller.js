@@ -1,7 +1,8 @@
 import * as service from '../services/usuarios_services.js';
 
 export const listar = async (req, res) => {
-    res.json(await service.listar());
+    const { pagina, limite } = req.query;
+    res.json(await service.listar({ pagina, limite }));
 };
 
 export const buscarPorId = async (req,res) => {
