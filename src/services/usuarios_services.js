@@ -1,5 +1,6 @@
 import { AppError } from '../utils/AppError.js';
 import { validarId } from '../utils/validators.js';
+import { paginarOffset } from '../utils/paginacion.js';
 import * as repo from '../repositories/usuarios_repositories.js';
 
 
@@ -32,7 +33,7 @@ export const validarEmail = (email) => {
   return emailLimpio;
 };
 
-export const listar = () => repo.listar();
+export const listar = ({ pagina, limite } = {}) => paginarOffset({ pagina, limite }, repo.listar);
 
 export const obtener = async (id, user) => {
   const usuarioId = validarId(id);

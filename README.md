@@ -162,7 +162,7 @@ Actualmente hay **67 tests** que cubren:
 - **Rate limiting**: el 6.º intento con el mismo email (aunque cambien mayúsculas o espacios) da 429 con `Retry-After`, bloquear un email no afecta a otro, el límite por IP, y un `X-Forwarded-For` inventado no esquiva el límite.
 - **Autores**: validación del body.
 - **Libros**: rutas públicas y protegidas, autor inexistente, stock negativo, ISBN repetido, JSON mal formado (400), `PATCH /libros/:id/stock`, filtro por título y paginación (páginas distintas, total con filtro, límite inválido y página fuera de rango).
-- **Usuarios**: todas las rutas requieren token, nunca se devuelve el password, y `PUT`/`DELETE` sobre otro usuario responden 403.
+- **Usuarios**: todas las rutas requieren token, nunca se devuelve el password, y `PUT`/`DELETE` sobre otro usuario responden 403; paginación por offset (páginas distintas, página fuera de rango con el total real y parámetros inválidos).
 - **Préstamos**: el usuario se toma del token, el stock baja al prestar y sube al devolver, sin stock responde 409, un préstamo solo se puede devolver una vez (409 y el stock no vuelve a subir) y solo por su dueño (403); paginación con cursor (recorrer todas las páginas sin repetidos ni faltantes, combinada con `activos=true` y con el filtro del lector, cursor inválido).
 - **Concurrencia**: con un libro de stock 1, dos préstamos simultáneos de usuarios distintos no pueden ocurrir a la vez: uno responde 201, el otro 409 y el stock queda en 0.
 - **Peticiones sin body**: responden 400 en vez de 500.
@@ -289,7 +289,7 @@ La respuesta es un objeto con los datos de la página y la información para nav
 
 | Método | Ruta             | Descripción              | Body |
 |--------|------------------|--------------------------|------|
-| GET    | `/usuarios`      | Lista todos los usuarios | —    |
+| GET    | `/usuarios`      | Lista los usuarios paginados (`?pagina=2&limite=10`) | —    |
 | GET    | `/usuarios/:id`  | Obtiene un usuario       | —    |
 | PUT    | `/usuarios/:id`  | Actualiza tu propio usuario | `{ "nombre": "Ana Pérez", "email": "ana@correo.com" }` |
 | DELETE | `/usuarios/:id`  | Elimina tu propio usuario   | —    |
@@ -297,6 +297,8 @@ La respuesta es un objeto con los datos de la página y la información para nav
 El alta de usuarios se hace con `POST /auth/registrar`. Todas las rutas requieren token; `PUT` y `DELETE` responden 403 (`Solo puedes modificar tu propio usuario`) si el `:id` no es el del usuario autenticado.
 
 Reglas: `nombre` obligatorio (máx. 100 caracteres); `email` obligatorio, con formato válido, único (máx. 150) y se guarda en minúsculas.
+
+`GET /usuarios` se pagina por offset igual que `GET /libros`: mismos parámetros (`pagina`, `limite`), mismas reglas y misma respuesta `{ data, paginacion }` (ver [paginación de libros](#paginación-de-get-libros)). Ordena por `id`.
 
 ### Préstamos — `/prestamos`
 
