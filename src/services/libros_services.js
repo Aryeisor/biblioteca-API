@@ -1,7 +1,7 @@
 import * as repo from '../repositories/libros_repositories.js';
 import * as autoresRepo from '../repositories/autores_repositories.js';
 import { AppError } from '../utils/AppError.js';
-import { validarId } from '../utils/validators.js';
+import { validarId, validarEntero } from '../utils/validators.js';
 
 
 
@@ -50,16 +50,6 @@ export const actualizarStock = async (id, stock) => {
   if (!actualizado) throw new AppError(404, 'Libro no encontrado');
 
   return repo.buscarPorId(libroId);
-};
-
-// undefined → valor por defecto; cualquier otra cosa debe ser un entero dentro del rango.
-const validarEntero = (valor, nombre, min, max, porDefecto) => {
-  if (valor === undefined) return porDefecto;
-  const n = Number(valor);
-  if (!Number.isInteger(n) || n < min || n > max) {
-    throw new AppError(400, `${nombre} debe ser un entero entre ${min} y ${max}`);
-  }
-  return n;
 };
 
 export const listar = async ({ titulo, pagina, limite } = {}) => {

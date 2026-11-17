@@ -2,7 +2,8 @@ import * as service from '../services/prestamos_services.js';
 
 //req.query trae lo que va después del ? en la URL.
 export const listar = async (req,res) =>{
-    res.json(await service.listar(req.query.activos, req.user));
+    const { activos, cursor, limite } = req.query;
+    res.json(await service.listar({ activos, cursor, limite }, req.user));
 };
 
 export const prestar = async (req,res) =>{
