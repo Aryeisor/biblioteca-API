@@ -1,7 +1,8 @@
 import * as repo from '../repositories/libros_repositories.js';
 import * as autoresRepo from '../repositories/autores_repositories.js';
 import { AppError } from '../utils/AppError.js';
-import { validarId, validarEntero } from '../utils/validators.js';
+import { validarId } from '../utils/validators.js';
+import { paginarOffset } from '../utils/paginacion.js';
 
 
 
@@ -52,30 +53,9 @@ export const actualizarStock = async (id, stock) => {
   return repo.buscarPorId(libroId);
 };
 
-export const listar = async ({ titulo, pagina, limite } = {}) => {
+export const listar = ({ titulo, pagina, limite } = {}) => {
   const filtro = titulo?.trim() || null;
-  const paginaNum = validarEntero(pagina, 'pagina', 1, Number.MAX_SAFE_INTEGER, 1);
-  const limiteNum = validarEntero(limite, 'limite', 1, 100, 20); // 400 en vez de recortar: el cliente se entera del error
-  const offset = (paginaNum - 1) * limiteNum;
-
-  const filas = await repo.listar(filtro, limiteNum, offset);
-
-  // Página vacía: el total viaja dentro de las filas, así que si no hay filas hay que pedirlo aparte.
-  let total = filas.length ? Number(filas[0].total) : 0;
-  if (!filas.length && offset > 0) {
-    const [primera] = await repo.listar(filtro, 1, 0);
-    total = primera ? Number(primera.total) : 0;
-  }
-
-  return {
-    data: filas.map(({ total, ...libro }) => libro),
-    paginacion: {
-      pagina: paginaNum,
-      limite: limiteNum,
-      total,
-      totalPaginas: Math.ceil(total / limiteNum),
-    },
-  };
+  return paginarOffset({ pagina, limite }, (lim, offset) => repo.listar(filtro, lim, offset));
 };
 
 export const obtener = async (id) => {
