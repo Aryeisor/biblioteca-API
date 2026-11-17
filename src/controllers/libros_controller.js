@@ -1,7 +1,8 @@
 import * as service  from '../services/libros_services.js';
 
 export const listar = async (req,res) => {
-    res.json(await service.listar(req.query.titulo));
+    const { titulo, pagina, limite } = req.query;
+    res.json(await service.listar({ titulo, pagina, limite }));
 };
 
 export const obtenerPorId = async (req,res) => {

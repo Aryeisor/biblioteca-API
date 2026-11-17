@@ -12,10 +12,18 @@ const SELECT_BASE = `
 //'%cien%'  →  "cualquier cosa + cien + cualquier cosa"
 //Es decir, que cien aparezca en cualquier parte del título.
 //ORDER BY l.id: ordena los resultados por id para que siempre salgan en el mismo orden.
-export const listar = async(titulo = null) => {
-    const { rows } = await pool.query(`${SELECT_BASE}
+//COUNT(*) OVER(): window function. Cuenta las filas que cumplen el WHERE ANTES del LIMIT y pega ese total en cada fila.
+//LIMIT $2: cuántas filas devolver (tamaño de página). OFFSET $3: cuántas saltarse (pagina - 1) * limite.
+//Si limite es null, PostgreSQL lo toma como LIMIT ALL (sin límite).
+export const listar = async(titulo = null, limite = null, offset = 0) => {
+    const { rows } = await pool.query(`
+     SELECT l.id, l.titulo, l.isbn, l.stock, l.autor_id, a.nombre AS autor,
+            COUNT(*) OVER() AS total
+     FROM libros l
+     JOIN autores a ON a.id = l.autor_id
      WHERE ($1::text IS NULL OR l.titulo ILIKE '%' || $1 || '%')
-     ORDER BY l.id`, [titulo]);
+     ORDER BY l.id
+     LIMIT $2 OFFSET $3`, [titulo, limite, offset]);
 
     return rows;
 };

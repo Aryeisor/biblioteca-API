@@ -161,7 +161,7 @@ Actualmente hay **67 tests** que cubren:
 - **Autenticación**: registro (email en minúsculas, sin password en la respuesta, email repetido, contraseña corta, email inválido), login correcto e incorrecto (mismo mensaje 401), rutas protegidas sin token o con token inválido, token vencido (`TOKEN_EXPIRADO`) y token con la firma alterada (`TOKEN_INVALIDO`).
 - **Rate limiting**: el 6.º intento con el mismo email (aunque cambien mayúsculas o espacios) da 429 con `Retry-After`, bloquear un email no afecta a otro, el límite por IP, y un `X-Forwarded-For` inventado no esquiva el límite.
 - **Autores**: validación del body.
-- **Libros**: rutas públicas y protegidas, autor inexistente, stock negativo, ISBN repetido, JSON mal formado (400), `PATCH /libros/:id/stock` y filtro por título.
+- **Libros**: rutas públicas y protegidas, autor inexistente, stock negativo, ISBN repetido, JSON mal formado (400), `PATCH /libros/:id/stock`, filtro por título y paginación (páginas distintas, total con filtro, límite inválido y página fuera de rango).
 - **Usuarios**: todas las rutas requieren token, nunca se devuelve el password, y `PUT`/`DELETE` sobre otro usuario responden 403.
 - **Préstamos**: el usuario se toma del token, el stock baja al prestar y sube al devolver, sin stock responde 409, un préstamo solo se puede devolver una vez (409 y el stock no vuelve a subir) y solo por su dueño (403).
 - **Concurrencia**: con un libro de stock 1, dos préstamos simultáneos de usuarios distintos no pueden ocurrir a la vez: uno responde 201, el otro 409 y el stock queda en 0.
@@ -251,8 +251,9 @@ Reglas: `nombre` obligatorio (máx. 100 caracteres).
 
 | Método | Ruta                    | Descripción                                   | Body |
 |--------|-------------------------|-----------------------------------------------|------|
-| GET    | `/libros`               | Lista todos los libros (con nombre del autor) | —    |
+| GET    | `/libros`               | Lista los libros paginados (con nombre del autor) | —    |
 | GET    | `/libros?titulo=cien`   | Filtra por título (sin distinguir mayúsculas) | —    |
+| GET    | `/libros?pagina=2&limite=10` | Página concreta (se combina con `titulo`) | —    |
 | GET    | `/libros/:id`           | Obtiene un libro                              | —    |
 | POST   | `/libros`               | Crea un libro                                 | `{ "titulo": "Cien años de soledad", "isbn": "978-0307474728", "autorId": 1, "stock": 3 }` |
 | PUT    | `/libros/:id`           | Actualiza un libro                            | Igual que POST |
@@ -260,6 +261,29 @@ Reglas: `nombre` obligatorio (máx. 100 caracteres).
 | DELETE | `/libros/:id`           | Elimina un libro                              | —    |
 
 Reglas: `titulo` obligatorio (máx. 200 caracteres); `isbn` opcional y único (máx. 20); `autorId` debe existir (si no, 404); `stock` entero ≥ 0, por defecto 0 (en el PATCH es obligatorio).
+
+#### Paginación de `GET /libros`
+
+| Parámetro | Tipo | Por defecto | Reglas |
+|-----------|------|-------------|--------|
+| `pagina`  | entero | `1`  | ≥ 1 |
+| `limite`  | entero | `20` | entre 1 y 100 |
+
+Un valor fuera de rango o que no sea entero (ej. `limite=5000`, `pagina=abc`) responde **400**; no se recorta en silencio, para que el cliente sepa que pidió algo inválido.
+
+La respuesta es un objeto con los datos de la página y la información para navegar:
+
+```json
+{
+  "data": [
+    { "id": 1, "titulo": "Cien años de soledad", "isbn": "111", "stock": 3, "autor_id": 1, "autor": "Gabriel García Márquez" }
+  ],
+  "paginacion": { "pagina": 1, "limite": 20, "total": 13, "totalPaginas": 1 }
+}
+```
+
+- `total` cuenta los libros que cumplen el filtro `titulo`, no solo los de la página.
+- Pedir una página que no existe (ej. `pagina=99`) responde 200 con `data: []` y el `total` real.
 
 ### Usuarios — `/usuarios`
 

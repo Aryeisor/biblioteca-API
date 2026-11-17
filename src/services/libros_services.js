@@ -52,7 +52,41 @@ export const actualizarStock = async (id, stock) => {
   return repo.buscarPorId(libroId);
 };
 
-export const listar = (titulo) => repo.listar(titulo?.trim() || null);
+// undefined → valor por defecto; cualquier otra cosa debe ser un entero dentro del rango.
+const validarEntero = (valor, nombre, min, max, porDefecto) => {
+  if (valor === undefined) return porDefecto;
+  const n = Number(valor);
+  if (!Number.isInteger(n) || n < min || n > max) {
+    throw new AppError(400, `${nombre} debe ser un entero entre ${min} y ${max}`);
+  }
+  return n;
+};
+
+export const listar = async ({ titulo, pagina, limite } = {}) => {
+  const filtro = titulo?.trim() || null;
+  const paginaNum = validarEntero(pagina, 'pagina', 1, Number.MAX_SAFE_INTEGER, 1);
+  const limiteNum = validarEntero(limite, 'limite', 1, 100, 20); // 400 en vez de recortar: el cliente se entera del error
+  const offset = (paginaNum - 1) * limiteNum;
+
+  const filas = await repo.listar(filtro, limiteNum, offset);
+
+  // Página vacía: el total viaja dentro de las filas, así que si no hay filas hay que pedirlo aparte.
+  let total = filas.length ? Number(filas[0].total) : 0;
+  if (!filas.length && offset > 0) {
+    const [primera] = await repo.listar(filtro, 1, 0);
+    total = primera ? Number(primera.total) : 0;
+  }
+
+  return {
+    data: filas.map(({ total, ...libro }) => libro),
+    paginacion: {
+      pagina: paginaNum,
+      limite: limiteNum,
+      total,
+      totalPaginas: Math.ceil(total / limiteNum),
+    },
+  };
+};
 
 export const obtener = async (id) => {
   const libro = await repo.buscarPorId(validarId(id));
