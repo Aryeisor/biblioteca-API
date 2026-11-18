@@ -1,4 +1,6 @@
-import express from 'express'
+import express from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
 import autoresRoutes from './routes/autores.router.js';
 import librosRoutes from './routes/libros.router.js';
 import usuariosRoutes from './routes/usuarios.router.js';
@@ -12,7 +14,10 @@ const app = express();
 // Nunca 'true': le creería a cualquier X-Forwarded-For que invente el cliente
 app.set('trust proxy', config.trustProxy);
 
-app.use(express.json())
+
+app.use(helmet());
+app.use(cors({origin: config.corsOrigins}));
+app.use(express.json({limit: '100kb'}));
 
 app.use('/autores', autoresRoutes);
 app.use('/libros', librosRoutes);

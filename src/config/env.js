@@ -37,12 +37,17 @@ if (process.env.JWT_SECRET.length < 32){
     process.exit(1);
 }
 
+// CORS_ORIGINS es opcional: vacío = ningún origen externo permitido
+const parsearOrigins = (valor = '') =>
+    valor.split(',').map((o) => o.trim()).filter(Boolean);
+
 // 3. Exportar la configuración ya limpia y con los tipos correctos
 export const config = {
   jwtSecret: process.env.JWT_SECRET,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN,
   port: validarPort(process.env.PORT, 'PORT'),
   trustProxy: validarTrustProxy(process.env.TRUST_PROXY),
+  corsOrigins: parsearOrigins(process.env.CORS_ORIGINS),
   db:{
     host: process.env.DB_HOST,
     port: validarPort(process.env.DB_PORT, 'DB_PORT'),

@@ -27,5 +27,5 @@ export default (err, req, res, next) => {
   }
 
   console.error(err);
-  res.status(500).json({ message: 'Error interno del servidor' });
+  res.status(500).json({ code: 'ERROR_INTERNO' ,message: 'Error interno del servidor' });
 };

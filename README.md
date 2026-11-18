@@ -34,6 +34,9 @@ Node.js · Express 5 · PostgreSQL · pg · bcryptjs · jsonwebtoken · ES Modul
    # Proxies tuyos delante de la app: 0 en local, 1 detrás de Nginx/balanceador
    TRUST_PROXY=0
 
+   # Frontends que pueden llamar a la API, separados por comas (vacío = ninguno)
+   CORS_ORIGINS=
+
    DB_HOST=localhost
    DB_PORT=5432
    DB_USER=postgres
@@ -54,10 +57,11 @@ Node.js · Express 5 · PostgreSQL · pg · bcryptjs · jsonwebtoken · ES Modul
 
    Al arrancar, `src/config/env.js` valida la configuración y la app se detiene con un mensaje claro si algo está mal:
 
-   - Todas las variables de arriba son obligatorias, salvo `TRUST_PROXY`; si falta alguna, indica cuáles.
+   - Todas las variables de arriba son obligatorias, salvo `TRUST_PROXY` y `CORS_ORIGINS`; si falta alguna, indica cuáles.
    - `PORT` y `DB_PORT` deben ser enteros entre 1 y 65535.
    - `JWT_SECRET` debe tener al menos 32 caracteres.
    - `TRUST_PROXY` es opcional (por defecto `0`) y debe ser un entero ≥ 0. Ver [IP real detrás de un proxy](#ip-real-detrás-de-un-proxy-trust_proxy).
+   - `CORS_ORIGINS` es opcional (por defecto ninguno). Ver [CORS y headers de seguridad](#cors-y-headers-de-seguridad-cors_origins).
 
 4. Crear la base de datos en PostgreSQL (desde psql o pgAdmin):
 
@@ -132,6 +136,7 @@ Los tests usan el test runner nativo de Node (`node:test` con `node:assert/stric
    DB_NAME=biblioteca_test
    JWT_SECRET=secreto_de_prueba_solo_para_tests
    JWT_EXPIRES_IN=1h
+   CORS_ORIGINS=http://localhost:5173
    ```
 
    Igual que el `.env`, el `.env.test` real no se sube al repositorio.
@@ -194,6 +199,12 @@ Las rutas de `/auth` tienen límite de intentos para frenar la fuerza bruta ([sr
 Al superar el límite responde `429` con el header `Retry-After` (segundos que faltan para que se reinicie la ventana). Un proceso periódico borra los contadores vencidos para que la memoria no crezca sin límite.
 
 Limitación: los contadores viven en la memoria del proceso. Se pierden al reiniciar la API y no se comparten entre varias instancias (con 3 instancias detrás de un balanceador, el límite real se triplica). Para eso habría que guardarlos en Redis.
+
+### CORS y headers de seguridad (`CORS_ORIGINS`)
+
+- **helmet** agrega headers de seguridad a cada respuesta (por ejemplo `X-Content-Type-Options: nosniff`) y quita `X-Powered-By`, que delataba que la API usa Express.
+- **cors** solo agrega `Access-Control-Allow-Origin` cuando el `Origin` de la petición está en `CORS_ORIGINS`. Con otro origen no responde error: no pone el header y es el **navegador** el que bloquea la respuesta. Por eso CORS no protege contra curl ni Postman; solo controla qué páginas web pueden leer la API desde el navegador.
+- Va antes de las rutas y de la autenticación: el preflight `OPTIONS` del navegador no trae el token, así que si llegara al middleware de auth recibiría 401 y el navegador cancelaría la petición real.
 
 ### IP real detrás de un proxy (`TRUST_PROXY`)
 
