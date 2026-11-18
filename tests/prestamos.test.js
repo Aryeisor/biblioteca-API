@@ -112,6 +112,32 @@ describe('Préstamos', () => {
         assert.equal(res.body.usuario_id, beto.id);
     });
 
+    it('prestar el mismo libro dos veces da 409 PRESTAMO_DUPLICADO y el stock baja solo 1', async () => {
+        const autor = await api.get('/autores').then((r) => r.body[0]);
+        const repetido = await crearLibro(biblio.token, { titulo: 'Otras inquisiciones', autorId: autor.id, stock: 3 });
+
+        await api.post('/prestamos').set(bearer(ana)).send({ libroId: repetido.id }).expect(201);
+        const res = await api.post('/prestamos').set(bearer(ana)).send({ libroId: repetido.id });
+        assert.equal(res.status, 409);
+        assert.equal(res.body.code, 'PRESTAMO_DUPLICADO');
+        // el segundo intento descontó stock antes del INSERT: si queda en 2, el ROLLBACK lo deshizo
+        assert.equal(await stockDe(repetido.id), 2);
+    });
+
+    it('concurrencia: el mismo préstamo dos veces en paralelo da un 201 y un 409 PRESTAMO_DUPLICADO', async () => {
+        const autor = await api.get('/autores').then((r) => r.body[0]);
+        // stock 3: que el 409 solo pueda venir del índice único, no de la falta de stock
+        const paralelo = await crearLibro(biblio.token, { titulo: 'Discusión', autorId: autor.id, stock: 3 });
+
+        const respuestas = await Promise.all([
+            api.post('/prestamos').set(bearer(beto)).send({ libroId: paralelo.id }),
+            api.post('/prestamos').set(bearer(beto)).send({ libroId: paralelo.id }),
+        ]);
+        assert.deepEqual(respuestas.map((r) => r.status).sort(), [201, 409]);
+        assert.equal(respuestas.find((r) => r.status === 409).body.code, 'PRESTAMO_DUPLICADO');
+        assert.equal(await stockDe(paralelo.id), 2);
+    });
+
     it('concurrencia: con stock 1, dos préstamos en paralelo dan un 201 y un 409', async () => {
         const autor = await api.get('/autores').then((r) => r.body[0]);
         const unico = await crearLibro(biblio.token, { titulo: 'El jardín de senderos', autorId: autor.id, stock: 1 });
@@ -149,9 +175,11 @@ describe('Préstamos: paginación con cursor', () => {
 
     before(async () => {
         const autor = await api.get('/autores').then((r) => r.body[0]);
-        const muchos = await crearLibro(biblio.token, { titulo: 'Historia universal de la infamia', autorId: autor.id, stock: 20 });
-        for (const u of [ana, beto, ana, ana, beto, ana, beto, ana]) {
-            const { body } = await api.post('/prestamos').set(bearer(u)).send({ libroId: muchos.id }).expect(201);
+        const usuarios = [ana, beto, ana, ana, beto, ana, beto, ana];
+        for (const [i, u] of usuarios.entries()) {
+            // un libro por préstamo: uq_prestamo_activo no deja repetir un préstamo activo de la misma pareja
+            const libroN = await crearLibro(biblio.token, { titulo: `Historia universal de la infamia ${i}`, autorId: autor.id, stock: 1 });
+            const { body } = await api.post('/prestamos').set(bearer(u)).send({ libroId: libroN.id }).expect(201);
             if (body.id % 3 === 0) await api.patch(`/prestamos/${body.id}/devolver`).set(bearer(biblio)).expect(200);
         }
     });
