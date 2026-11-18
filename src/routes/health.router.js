@@ -19,7 +19,10 @@ router.get('/ready', async (req, res) => {
     } catch (err) {
         // el detalle va al log; al cliente solo el code
         req.log.warn({ err }, 'readiness: la base de datos no responde');
-        res.status(503).json({ code: 'BD_NO_DISPONIBLE', message: 'La base de datos no está disponible' });
+        res.status(503).json({
+            code: 'BD_NO_DISPONIBLE',
+            message: 'La base de datos no está disponible',
+        });
     }
 });
 

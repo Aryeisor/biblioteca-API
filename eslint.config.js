@@ -9,12 +9,15 @@ export default defineConfig([
     { languageOptions: { globals: globals.node } },
     {
         rules: {
-            'no-unused-vars': ['error', {
-                // _next: Express reconoce el manejador de errores por tener 4 parámetros, aunque no use el último
-                argsIgnorePattern: '^_',
-                // ({ total, ...fila }) => fila: total se separa a propósito para quitarlo del objeto
-                ignoreRestSiblings: true,
-            }],
+            'no-unused-vars': [
+                'error',
+                {
+                    // _next: Express reconoce el manejador de errores por tener 4 parámetros, aunque no use el último
+                    argsIgnorePattern: '^_',
+                    // ({ total, ...fila }) => fila: total se separa a propósito para quitarlo del objeto
+                    ignoreRestSiblings: true,
+                },
+            ],
         },
     },
     // Último: apaga las reglas de formato que chocarían con Prettier

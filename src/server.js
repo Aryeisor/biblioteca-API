@@ -1,8 +1,8 @@
-import app from './app.js'
-import pool from './config/db.js'
-import { config } from './config/env.js'
-import { logger } from './config/logger.js'
-import { estaApagando, marcarApagando } from './config/estado.js'
+import app from './app.js';
+import pool from './config/db.js';
+import { config } from './config/env.js';
+import { logger } from './config/logger.js';
+import { estaApagando, marcarApagando } from './config/estado.js';
 
 const PORT = config.port;
 // Si las peticiones en curso no terminan en este tiempo, se fuerza la salida
@@ -10,15 +10,15 @@ const TIEMPO_MAXIMO_APAGADO_MS = 10_000;
 
 // Comprobar la base antes de abrir el puerto: sin base, la API no sirve y es mejor no arrancar
 try {
-    await pool.query('SELECT 1')
-    logger.info('conectado a la base de datos')
+    await pool.query('SELECT 1');
+    logger.info('conectado a la base de datos');
 } catch (error) {
-    logger.fatal({ err: error }, 'no se pudo conectar a la base de datos')
-    process.exit(1)
+    logger.fatal({ err: error }, 'no se pudo conectar a la base de datos');
+    process.exit(1);
 }
 
-const server = app.listen(PORT, () =>{
-    logger.info(`escuchando en el puerto ${PORT}`)
+const server = app.listen(PORT, () => {
+    logger.info(`escuchando en el puerto ${PORT}`);
 });
 
 const apagar = (señal) => {
@@ -60,4 +60,4 @@ const apagar = (señal) => {
 };
 
 process.on('SIGTERM', () => apagar('SIGTERM')); // lo que envía Docker en `docker stop`
-process.on('SIGINT', () => apagar('SIGINT'));   // Ctrl+C en tu terminal
+process.on('SIGINT', () => apagar('SIGINT')); // Ctrl+C en tu terminal

@@ -111,12 +111,12 @@ Requisito: [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 - **El esquema se carga solo la primera vez.** `db/schema.sql` se ejecuta automáticamente al crear el volumen de datos (`pgdata`). Si después cambias `schema.sql`, no se vuelve a aplicar: hay que borrar el volumen con `docker compose down -v` (se pierden los datos).
 - **La base del contenedor es independiente de tu PostgreSQL local.** Tienen datos distintos aunque se llamen igual. Compose fija `DB_HOST=db` (el nombre del servicio) y `DB_PORT=5432`, así que los valores de `DB_HOST` y `DB_PORT` de tu `.env` solo se usan al correr la API sin Docker.
 
-| Comando                      | Qué hace                                                |
-|------------------------------|---------------------------------------------------------|
-| `docker compose up -d`       | Levanta los contenedores en segundo plano               |
-| `docker compose logs -f api` | Muestra los logs de la API en vivo                      |
-| `docker compose down`        | Detiene y elimina los contenedores (conserva los datos) |
-| `docker compose down -v`     | Igual, pero también **borra el volumen con los datos**  |
+| Comando                      | Qué hace                                                                      |
+| ---------------------------- | ----------------------------------------------------------------------------- |
+| `docker compose up -d`       | Levanta los contenedores en segundo plano                                     |
+| `docker compose logs -f api` | Muestra los logs de la API en vivo                                            |
+| `docker compose down`        | Detiene y elimina los contenedores (conserva los datos)                       |
+| `docker compose down -v`     | Igual, pero también **borra el volumen con los datos**                        |
 | `docker compose stop api`    | Detiene la API con un [apagado ordenado](#apagado-ordenado-graceful-shutdown) |
 
 No ejecutes `npm run dev` y Docker a la vez: los dos usan el puerto 3000 y el segundo en arrancar falla.
@@ -124,8 +124,8 @@ No ejecutes `npm run dev` y Docker a la vez: los dos usan el puerto 3000 y el se
 El puerto de PostgreSQL no se publica en el equipo: la API se conecta por la red interna de Compose. Si quieres conectarte a la base del contenedor con psql o DBeaver, agrega esto al servicio `db` en `docker-compose.yml` y conéctate a `localhost:5433` (se usa 5433 para no chocar con un PostgreSQL local en 5432):
 
 ```yaml
-    ports:
-      - "5433:5432"
+ports:
+  - '5433:5432'
 ```
 
 ## Pruebas
@@ -188,10 +188,10 @@ La API usa JWT. Las contraseñas se guardan como hash con bcrypt y nunca se devu
 
 ### Auth — `/auth`
 
-| Método | Ruta              | Descripción                      | Body |
-|--------|-------------------|----------------------------------|------|
-| POST   | `/auth/registrar` | Registra un usuario              | `{ "nombre": "Ana Pérez", "email": "ana@correo.com", "password": "unaClaveSegura" }` |
-| POST   | `/auth/login`     | Inicia sesión y devuelve un token | `{ "email": "ana@correo.com", "password": "unaClaveSegura" }` |
+| Método | Ruta              | Descripción                       | Body                                                                                 |
+| ------ | ----------------- | --------------------------------- | ------------------------------------------------------------------------------------ |
+| POST   | `/auth/registrar` | Registra un usuario               | `{ "nombre": "Ana Pérez", "email": "ana@correo.com", "password": "unaClaveSegura" }` |
+| POST   | `/auth/login`     | Inicia sesión y devuelve un token | `{ "email": "ana@correo.com", "password": "unaClaveSegura" }`                        |
 
 - `POST /auth/registrar` responde `201` con el usuario creado, sin password (`id`, `nombre`, `email`, `created_at`). Reglas: `nombre` y `email` igual que en usuarios; `password` obligatorio, entre 8 y 72 caracteres (72 es el límite de bcrypt); email único (si se repite responde 409).
 - `POST /auth/login` responde `200` con `{ "token": "..." }`. Si falta el email o la contraseña responde 400. Si el email no existe o la contraseña no coincide responde `401` con `{ "message": "Credenciales invalidas" }`: es el mismo mensaje en ambos casos a propósito, para no revelar qué emails están registrados. Por la misma razón, ambos casos **tardan lo mismo**: si el email no existe, se ejecuta igual un `bcrypt.compare` contra un hash ficticio (calculado una sola vez al cargar el módulo, con el mismo costo que los hashes reales). Sin esto, la respuesta rápida delataría qué emails no existen.
@@ -200,11 +200,11 @@ La API usa JWT. Las contraseñas se guardan como hash con bcrypt y nunca se devu
 
 Las rutas de `/auth` tienen límite de intentos para frenar la fuerza bruta ([src/middlewares/rateLimit.js](src/middlewares/rateLimit.js), ventana fija):
 
-| Ruta                   | Clave                          | Límite         | `code` al superarlo     |
-|------------------------|--------------------------------|----------------|-------------------------|
-| `POST /auth/login`     | IP                             | 20 cada 15 min | `DEMASIADAS_PETICIONES` |
+| Ruta                   | Clave                                | Límite         | `code` al superarlo     |
+| ---------------------- | ------------------------------------ | -------------- | ----------------------- |
+| `POST /auth/login`     | IP                                   | 20 cada 15 min | `DEMASIADAS_PETICIONES` |
 | `POST /auth/login`     | email (sin espacios y en minúsculas) | 5 cada 15 min  | `DEMASIADOS_INTENTOS`   |
-| `POST /auth/registrar` | IP                             | 10 cada hora   | `DEMASIADOS_REGISTROS`  |
+| `POST /auth/registrar` | IP                                   | 10 cada hora   | `DEMASIADOS_REGISTROS`  |
 
 Al superar el límite responde `429` con el header `Retry-After` (segundos que faltan para que se reinicie la ventana). Un proceso periódico borra los contadores vencidos para que la memoria no crezca sin límite.
 
@@ -247,27 +247,27 @@ Envía el token en el header de cada petición protegida:
 Authorization: Bearer <token>
 ```
 
-En Insomnia: pestaña **Auth** → **Bearer Token** → pega el token en el campo *Token*.
+En Insomnia: pestaña **Auth** → **Bearer Token** → pega el token en el campo _Token_.
 
 El token se firma y se verifica solo con el algoritmo `HS256` (se rechaza cualquier token firmado con otro algoritmo). Expira según `JWT_EXPIRES_IN` (por ejemplo `1h`); cuando expira, la API responde 401 con el código `TOKEN_EXPIRADO` y hay que volver a hacer login.
 
 ### Rutas protegidas
 
-| Módulo     | Públicas (sin token)       | Protegidas (requieren token) |
-|------------|----------------------------|------------------------------|
-| Auth       | `POST /auth/registrar`, `POST /auth/login` | — |
-| Autores    | `GET /autores`, `GET /autores/:id` | `POST`, `PUT`, `DELETE` |
-| Libros     | `GET /libros`, `GET /libros/:id` | `POST`, `PUT`, `PATCH /libros/:id/stock`, `DELETE` |
-| Usuarios   | —                          | Todas. `PUT` y `DELETE` solo sobre el propio usuario (403 si el `:id` no es el del token) |
-| Préstamos  | —                          | Todas. `POST` toma el usuario del token; `PATCH /prestamos/:id/devolver` solo sobre préstamos propios (403 si es de otro usuario) |
+| Módulo    | Públicas (sin token)                       | Protegidas (requieren token)                                                                                                      |
+| --------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| Auth      | `POST /auth/registrar`, `POST /auth/login` | —                                                                                                                                 |
+| Autores   | `GET /autores`, `GET /autores/:id`         | `POST`, `PUT`, `DELETE`                                                                                                           |
+| Libros    | `GET /libros`, `GET /libros/:id`           | `POST`, `PUT`, `PATCH /libros/:id/stock`, `DELETE`                                                                                |
+| Usuarios  | —                                          | Todas. `PUT` y `DELETE` solo sobre el propio usuario (403 si el `:id` no es el del token)                                         |
+| Préstamos | —                                          | Todas. `POST` toma el usuario del token; `PATCH /prestamos/:id/devolver` solo sobre préstamos propios (403 si es de otro usuario) |
 
 Errores de token (todos con estado `401`):
 
-| Caso                            | Respuesta |
-|---------------------------------|-----------|
-| Sin header `Authorization`      | `{ "code": "TOKEN_REQUERIDO", "message": "Token requerido" }` |
-| Token expirado                  | `{ "code": "TOKEN_EXPIRADO", "message": "El token expiró" }` |
-| Token mal formado, firma alterada u otro algoritmo | `{ "code": "TOKEN_INVALIDO", "message": "Token inválido" }` |
+| Caso                                               | Respuesta                                                     |
+| -------------------------------------------------- | ------------------------------------------------------------- |
+| Sin header `Authorization`                         | `{ "code": "TOKEN_REQUERIDO", "message": "Token requerido" }` |
+| Token expirado                                     | `{ "code": "TOKEN_EXPIRADO", "message": "El token expiró" }`  |
+| Token mal formado, firma alterada u otro algoritmo | `{ "code": "TOKEN_INVALIDO", "message": "Token inválido" }`   |
 
 ## Endpoints
 
@@ -275,9 +275,9 @@ Errores de token (todos con estado `401`):
 
 Públicos: sin token y sin rate limiting. No muestran detalles internos; el error real queda en los logs.
 
-| Método | Ruta            | Pregunta                           | Respuesta |
-|--------|-----------------|------------------------------------|-----------|
-| GET    | `/health`       | ¿El proceso está vivo? (liveness)  | `200 { "status": "ok" }` siempre que responda; no toca la base |
+| Método | Ruta            | Pregunta                                     | Respuesta                                                                                                                                   |
+| ------ | --------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/health`       | ¿El proceso está vivo? (liveness)            | `200 { "status": "ok" }` siempre que responda; no toca la base                                                                              |
 | GET    | `/health/ready` | ¿Puede atender peticiones ahora? (readiness) | `200 { "status": "ok" }` si la base responde a `SELECT 1`; `503 APAGANDO` durante el apagado; `503 BD_NO_DISPONIBLE` si la base no responde |
 
 Un balanceador debe usar `/health/ready` para decidir si envía tráfico, y `/health` para decidir si reinicia el proceso.
@@ -304,37 +304,37 @@ En Windows, fuera de Docker, solo llega `SIGINT` (Ctrl+C).
 
 ### Autores — `/autores`
 
-| Método | Ruta               | Descripción              | Body                     |
-|--------|--------------------|--------------------------|--------------------------|
-| GET    | `/autores`     | Lista todos los autores  | —                        |
-| GET    | `/autores/:id` | Obtiene un autor         | —                        |
-| POST   | `/autores`     | Crea un autor            | `{ "nombre": "Gabriel García Márquez" }` |
-| PUT    | `/autores/:id` | Actualiza un autor       | `{ "nombre": "..." }`    |
-| DELETE | `/autores/:id` | Elimina un autor         | —                        |
+| Método | Ruta           | Descripción             | Body                                     |
+| ------ | -------------- | ----------------------- | ---------------------------------------- |
+| GET    | `/autores`     | Lista todos los autores | —                                        |
+| GET    | `/autores/:id` | Obtiene un autor        | —                                        |
+| POST   | `/autores`     | Crea un autor           | `{ "nombre": "Gabriel García Márquez" }` |
+| PUT    | `/autores/:id` | Actualiza un autor      | `{ "nombre": "..." }`                    |
+| DELETE | `/autores/:id` | Elimina un autor        | —                                        |
 
 Reglas: `nombre` obligatorio (máx. 100 caracteres).
 
 ### Libros — `/libros`
 
-| Método | Ruta                    | Descripción                                   | Body |
-|--------|-------------------------|-----------------------------------------------|------|
-| GET    | `/libros`               | Lista los libros paginados (con nombre del autor) | —    |
-| GET    | `/libros?titulo=cien`   | Filtra por título (sin distinguir mayúsculas) | —    |
-| GET    | `/libros?pagina=2&limite=10` | Página concreta (se combina con `titulo`) | —    |
-| GET    | `/libros/:id`           | Obtiene un libro                              | —    |
-| POST   | `/libros`               | Crea un libro                                 | `{ "titulo": "Cien años de soledad", "isbn": "978-0307474728", "autorId": 1, "stock": 3 }` |
-| PUT    | `/libros/:id`           | Actualiza un libro                            | Igual que POST |
-| PATCH  | `/libros/:id/stock`     | Cambia solo el stock del libro                | `{ "stock": 5 }` |
-| DELETE | `/libros/:id`           | Elimina un libro                              | —    |
+| Método | Ruta                         | Descripción                                       | Body                                                                                       |
+| ------ | ---------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| GET    | `/libros`                    | Lista los libros paginados (con nombre del autor) | —                                                                                          |
+| GET    | `/libros?titulo=cien`        | Filtra por título (sin distinguir mayúsculas)     | —                                                                                          |
+| GET    | `/libros?pagina=2&limite=10` | Página concreta (se combina con `titulo`)         | —                                                                                          |
+| GET    | `/libros/:id`                | Obtiene un libro                                  | —                                                                                          |
+| POST   | `/libros`                    | Crea un libro                                     | `{ "titulo": "Cien años de soledad", "isbn": "978-0307474728", "autorId": 1, "stock": 3 }` |
+| PUT    | `/libros/:id`                | Actualiza un libro                                | Igual que POST                                                                             |
+| PATCH  | `/libros/:id/stock`          | Cambia solo el stock del libro                    | `{ "stock": 5 }`                                                                           |
+| DELETE | `/libros/:id`                | Elimina un libro                                  | —                                                                                          |
 
 Reglas: `titulo` obligatorio (máx. 200 caracteres); `isbn` opcional y único (máx. 20); `autorId` debe existir (si no, 404); `stock` entero ≥ 0, por defecto 0 (en el PATCH es obligatorio).
 
 #### Paginación de `GET /libros`
 
-| Parámetro | Tipo | Por defecto | Reglas |
-|-----------|------|-------------|--------|
-| `pagina`  | entero | `1`  | ≥ 1 |
-| `limite`  | entero | `20` | entre 1 y 100 |
+| Parámetro | Tipo   | Por defecto | Reglas        |
+| --------- | ------ | ----------- | ------------- |
+| `pagina`  | entero | `1`         | ≥ 1           |
+| `limite`  | entero | `20`        | entre 1 y 100 |
 
 Un valor fuera de rango o que no sea entero (ej. `limite=5000`, `pagina=abc`) responde **400**; no se recorta en silencio, para que el cliente sepa que pidió algo inválido.
 
@@ -343,7 +343,14 @@ La respuesta es un objeto con los datos de la página y la información para nav
 ```json
 {
   "data": [
-    { "id": 1, "titulo": "Cien años de soledad", "isbn": "111", "stock": 3, "autor_id": 1, "autor": "Gabriel García Márquez" }
+    {
+      "id": 1,
+      "titulo": "Cien años de soledad",
+      "isbn": "111",
+      "stock": 3,
+      "autor_id": 1,
+      "autor": "Gabriel García Márquez"
+    }
   ],
   "paginacion": { "pagina": 1, "limite": 20, "total": 13, "totalPaginas": 1 }
 }
@@ -354,12 +361,12 @@ La respuesta es un objeto con los datos de la página y la información para nav
 
 ### Usuarios — `/usuarios`
 
-| Método | Ruta             | Descripción              | Body |
-|--------|------------------|--------------------------|------|
-| GET    | `/usuarios`      | Lista los usuarios paginados (`?pagina=2&limite=10`) | —    |
-| GET    | `/usuarios/:id`  | Obtiene un usuario       | —    |
-| PUT    | `/usuarios/:id`  | Actualiza tu propio usuario | `{ "nombre": "Ana Pérez", "email": "ana@correo.com" }` |
-| DELETE | `/usuarios/:id`  | Elimina tu propio usuario   | —    |
+| Método | Ruta            | Descripción                                          | Body                                                   |
+| ------ | --------------- | ---------------------------------------------------- | ------------------------------------------------------ |
+| GET    | `/usuarios`     | Lista los usuarios paginados (`?pagina=2&limite=10`) | —                                                      |
+| GET    | `/usuarios/:id` | Obtiene un usuario                                   | —                                                      |
+| PUT    | `/usuarios/:id` | Actualiza tu propio usuario                          | `{ "nombre": "Ana Pérez", "email": "ana@correo.com" }` |
+| DELETE | `/usuarios/:id` | Elimina tu propio usuario                            | —                                                      |
 
 El alta de usuarios se hace con `POST /auth/registrar`. Todas las rutas requieren token; `PUT` y `DELETE` responden 403 (`Solo puedes modificar tu propio usuario`) si el `:id` no es el del usuario autenticado.
 
@@ -369,14 +376,14 @@ Reglas: `nombre` obligatorio (máx. 100 caracteres); `email` obligatorio, con fo
 
 ### Préstamos — `/prestamos`
 
-| Método | Ruta                       | Descripción                                        | Body |
-|--------|----------------------------|----------------------------------------------------|------|
-| GET    | `/prestamos`               | Lista los préstamos paginados, del más reciente al más viejo (con título y usuario) | —    |
-| GET    | `/prestamos?activos=true`  | Lista solo los préstamos no devueltos              | —    |
-| GET    | `/prestamos?cursor=...&limite=10` | Página siguiente (se combina con `activos`) | —    |
-| GET    | `/prestamos/:id`           | Obtiene un préstamo                                | —    |
-| POST   | `/prestamos`               | Presta un libro al usuario autenticado (descuenta 1 de stock) | `{ "libroId": 1 }` |
-| PATCH  | `/prestamos/:id/devolver`  | Marca tu préstamo como devuelto (suma 1 al stock)  | —    |
+| Método | Ruta                              | Descripción                                                                         | Body               |
+| ------ | --------------------------------- | ----------------------------------------------------------------------------------- | ------------------ |
+| GET    | `/prestamos`                      | Lista los préstamos paginados, del más reciente al más viejo (con título y usuario) | —                  |
+| GET    | `/prestamos?activos=true`         | Lista solo los préstamos no devueltos                                               | —                  |
+| GET    | `/prestamos?cursor=...&limite=10` | Página siguiente (se combina con `activos`)                                         | —                  |
+| GET    | `/prestamos/:id`                  | Obtiene un préstamo                                                                 | —                  |
+| POST   | `/prestamos`                      | Presta un libro al usuario autenticado (descuenta 1 de stock)                       | `{ "libroId": 1 }` |
+| PATCH  | `/prestamos/:id/devolver`         | Marca tu préstamo como devuelto (suma 1 al stock)                                   | —                  |
 
 Reglas: todas las rutas requieren token; el usuario del préstamo se toma del token, no del body. El libro y el usuario deben existir (si no, 404); si el libro no tiene stock responde 409; devolver un préstamo de otro usuario responde 403; devolver un préstamo ya devuelto responde 409. Prestar y devolver se hacen en una transacción (`BEGIN`/`COMMIT`, con `SELECT ... FOR UPDATE`), así el stock y el préstamo nunca quedan desincronizados aunque lleguen peticiones a la vez.
 
@@ -400,15 +407,23 @@ Ejemplo de respuesta de `POST /prestamos` (`201 Created`):
 
 El historial de préstamos crece todos los días, así que se pagina con **cursor** en vez de `pagina`: cada respuesta dice dónde seguir y los préstamos nuevos no desplazan las páginas que ya se leyeron.
 
-| Parámetro | Tipo | Por defecto | Reglas |
-|-----------|------|-------------|--------|
-| `limite`  | entero | `20` | entre 1 y 100; si no, **400** |
+| Parámetro | Tipo   | Por defecto        | Reglas                                                                                                |
+| --------- | ------ | ------------------ | ----------------------------------------------------------------------------------------------------- |
+| `limite`  | entero | `20`               | entre 1 y 100; si no, **400**                                                                         |
 | `cursor`  | texto  | — (primera página) | el `siguienteCursor` de la respuesta anterior; si no es válido, **400** con `code: "CURSOR_INVALIDO"` |
 
 ```json
 {
   "data": [
-    { "id": 42, "fecha_prestamo": "2026-11-17T15:02:11.000Z", "fecha_devolucion": null, "libro_id": 3, "libro": "Ficciones", "usuario_id": 1, "usuario": "Ana" }
+    {
+      "id": 42,
+      "fecha_prestamo": "2026-11-17T15:02:11.000Z",
+      "fecha_devolucion": null,
+      "libro_id": 3,
+      "libro": "Ficciones",
+      "usuario_id": 1,
+      "usuario": "Ana"
+    }
   ],
   "paginacion": { "limite": 20, "siguienteCursor": "eyJpZCI6NDJ9" }
 }
@@ -421,11 +436,11 @@ El historial de préstamos crece todos los días, así que se pagina con **curso
 
 ### Respuestas exitosas
 
-| Código | Cuándo                                                  |
-|--------|---------------------------------------------------------|
+| Código | Cuándo                                                                                   |
+| ------ | ---------------------------------------------------------------------------------------- |
 | 200    | Consultas (GET) y actualizaciones (PUT, PATCH, incluido `PATCH /prestamos/:id/devolver`) |
-| 201    | Creación (POST), devuelve el registro creado            |
-| 204    | Eliminación (DELETE), sin cuerpo en la respuesta        |
+| 201    | Creación (POST), devuelve el registro creado                                             |
+| 204    | Eliminación (DELETE), sin cuerpo en la respuesta                                         |
 
 ### Respuestas de error
 
@@ -435,48 +450,48 @@ Todos los errores responden con `{ "message": "..." }`, y algunos incluyen adem�
 { "code": "TOKEN_EXPIRADO", "message": "El token expiró" }
 ```
 
-| Código | Cuándo                                                        |
-|--------|---------------------------------------------------------------|
-| 400    | ID inválido, datos incorrectos (ej. nombre vacío, título de más de 200 caracteres o stock negativo) o cuerpo que no es un JSON válido |
-| 401    | Token ausente, inválido o expirado; o credenciales inválidas en el login |
-| 403    | Acción sobre recursos de otro usuario (modificar/eliminar otro usuario o devolver un préstamo ajeno) |
-| 404    | El registro o la ruta no existe                               |
+| Código | Cuándo                                                                                                                                                   |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | ID inválido, datos incorrectos (ej. nombre vacío, título de más de 200 caracteres o stock negativo) o cuerpo que no es un JSON válido                    |
+| 401    | Token ausente, inválido o expirado; o credenciales inválidas en el login                                                                                 |
+| 403    | Acción sobre recursos de otro usuario (modificar/eliminar otro usuario o devolver un préstamo ajeno)                                                     |
+| 404    | El registro o la ruta no existe                                                                                                                          |
 | 409    | Valor duplicado (ej. ISBN o email repetido), se intenta borrar un registro relacionado (ej. un autor con libros), libro sin stock o préstamo ya devuelto |
-| 429    | Demasiados intentos en `/auth` (ver [rate limiting](#rate-limiting)); incluye el header `Retry-After` |
-| 500    | Error interno del servidor; incluye `requestId` para buscarlo en los [logs](#logs-log_level-y-x-request-id) |
-| 503    | `/health/ready`: la API se está apagando o la base no responde (ver [health checks](#health-checks--health)) |
+| 429    | Demasiados intentos en `/auth` (ver [rate limiting](#rate-limiting)); incluye el header `Retry-After`                                                    |
+| 500    | Error interno del servidor; incluye `requestId` para buscarlo en los [logs](#logs-log_level-y-x-request-id)                                              |
+| 503    | `/health/ready`: la API se está apagando o la base no responde (ver [health checks](#health-checks--health))                                             |
 
 Valores de `code`:
 
-| `code`                 | Estado | Cuándo |
-|------------------------|--------|--------|
-| `TOKEN_REQUERIDO`      | 401    | No se envió el token |
-| `RUTA_NO_ENCONTRADA`   | 404    | La ruta no existe |
-| `APAGANDO`             | 503    | `/health/ready` durante el apagado |
-| `BD_NO_DISPONIBLE`     | 503    | `/health/ready` cuando la base no responde |
-| `TOKEN_EXPIRADO`       | 401    | El token venció |
-| `TOKEN_INVALIDO`       | 401    | El token es inválido |
-| `JSON_INVALIDO`        | 400    | El cuerpo de la petición no es un JSON válido |
-| `CURSOR_INVALIDO`      | 400    | El `cursor` de `GET /prestamos` no es válido (no salió de una respuesta de la API) |
-| `PETICION_INVALIDA`    | 4xx    | Otros errores de la petición detectados por Express (ej. cuerpo demasiado grande) |
-| `REGISTRO_DUPLICADO`   | 409    | Valor único repetido (ISBN, email) |
-| `PRESTAMO_DUPLICADO`   | 409    | El usuario ya tiene un préstamo activo de ese libro |
-| `REGISTRO_RELACIONADO` | 409    | El registro está relacionado con otros datos (ej. borrar un autor con libros) |
-| `DEMASIADAS_PETICIONES`| 429    | Más de 20 logins desde la misma IP en 15 min |
-| `DEMASIADOS_INTENTOS`  | 429    | Más de 5 logins con el mismo email en 15 min |
-| `DEMASIADOS_REGISTROS` | 429    | Más de 10 registros desde la misma IP en 1 hora |
-| `ERROR_INTERNO`        | 500    | Error no controlado del servidor (la respuesta trae `requestId`) |
+| `code`                  | Estado | Cuándo                                                                             |
+| ----------------------- | ------ | ---------------------------------------------------------------------------------- |
+| `TOKEN_REQUERIDO`       | 401    | No se envió el token                                                               |
+| `RUTA_NO_ENCONTRADA`    | 404    | La ruta no existe                                                                  |
+| `APAGANDO`              | 503    | `/health/ready` durante el apagado                                                 |
+| `BD_NO_DISPONIBLE`      | 503    | `/health/ready` cuando la base no responde                                         |
+| `TOKEN_EXPIRADO`        | 401    | El token venció                                                                    |
+| `TOKEN_INVALIDO`        | 401    | El token es inválido                                                               |
+| `JSON_INVALIDO`         | 400    | El cuerpo de la petición no es un JSON válido                                      |
+| `CURSOR_INVALIDO`       | 400    | El `cursor` de `GET /prestamos` no es válido (no salió de una respuesta de la API) |
+| `PETICION_INVALIDA`     | 4xx    | Otros errores de la petición detectados por Express (ej. cuerpo demasiado grande)  |
+| `REGISTRO_DUPLICADO`    | 409    | Valor único repetido (ISBN, email)                                                 |
+| `PRESTAMO_DUPLICADO`    | 409    | El usuario ya tiene un préstamo activo de ese libro                                |
+| `REGISTRO_RELACIONADO`  | 409    | El registro está relacionado con otros datos (ej. borrar un autor con libros)      |
+| `DEMASIADAS_PETICIONES` | 429    | Más de 20 logins desde la misma IP en 15 min                                       |
+| `DEMASIADOS_INTENTOS`   | 429    | Más de 5 logins con el mismo email en 15 min                                       |
+| `DEMASIADOS_REGISTROS`  | 429    | Más de 10 registros desde la misma IP en 1 hora                                    |
+| `ERROR_INTERNO`         | 500    | Error no controlado del servidor (la respuesta trae `requestId`)                   |
 
 Internamente, los services lanzan `AppError(status, message, code)` ([src/utils/AppError.js](src/utils/AppError.js)) y el middleware [errorHandler.js](src/middlewares/errorHandler.js) lo convierte en la respuesta HTTP.
 
 ## Base de datos
 
-| Tabla       | Descripción                                                  |
-|-------------|--------------------------------------------------------------|
-| `autores`   | Autores de los libros                                        |
-| `libros`    | Libros con ISBN único y stock; cada uno pertenece a un autor |
+| Tabla       | Descripción                                                                                                        |
+| ----------- | ------------------------------------------------------------------------------------------------------------------ |
+| `autores`   | Autores de los libros                                                                                              |
+| `libros`    | Libros con ISBN único y stock; cada uno pertenece a un autor                                                       |
 | `usuarios`  | Usuarios de la biblioteca, con email único y columna `password` (hash bcrypt, nunca se devuelve en las respuestas) |
-| `prestamos` | Préstamos de libros a usuarios; `fecha_devolucion` vacía = no devuelto |
+| `prestamos` | Préstamos de libros a usuarios; `fecha_devolucion` vacía = no devuelto                                             |
 
 El esquema completo está en [db/schema.sql](db/schema.sql), que ya incluye la columna `password` en `usuarios`.
 

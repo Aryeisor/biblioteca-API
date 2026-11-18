@@ -1,6 +1,13 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { api, limpiarTablas, cerrarPool, crearUsuarioConToken, crearAutor, crearLibro } from './helpers.js';
+import {
+    api,
+    limpiarTablas,
+    cerrarPool,
+    crearUsuarioConToken,
+    crearAutor,
+    crearLibro,
+} from './helpers.js';
 
 let token, autor, libro;
 
@@ -8,7 +15,12 @@ before(async () => {
     await limpiarTablas();
     ({ token } = await crearUsuarioConToken('Admin', 'admin@correo.com', undefined, 'admin'));
     autor = await crearAutor(token, 'Gabriel García Márquez');
-    libro = await crearLibro(token, { titulo: 'Cien años de soledad', autorId: autor.id, stock: 3, isbn: '111' });
+    libro = await crearLibro(token, {
+        titulo: 'Cien años de soledad',
+        autorId: autor.id,
+        stock: 3,
+        isbn: '111',
+    });
 });
 after(cerrarPool);
 
@@ -48,8 +60,12 @@ describe('Libros: creación', () => {
     });
 
     it('POST /libros con token da 201 e incluye el nombre del autor', async () => {
-        const res = await api.post('/libros').set(auth())
-            .send({ titulo: 'El amor en los tiempos del cólera', autorId: autor.id, stock: 2, isbn: '222' });
+        const res = await api.post('/libros').set(auth()).send({
+            titulo: 'El amor en los tiempos del cólera',
+            autorId: autor.id,
+            stock: 2,
+            isbn: '222',
+        });
         assert.equal(res.status, 201);
         assert.equal(res.body.autor, 'Gabriel García Márquez');
         assert.equal(res.body.stock, 2);
@@ -64,22 +80,31 @@ describe('Libros: creación', () => {
         const res = await api
             .post('/libros')
             .set('Content-Type', 'application/json')
-            .send('{ "titulo": ');      // string crudo, no un objeto
-        assert.equal(res.status,400)
+            .send('{ "titulo": '); // string crudo, no un objeto
+        assert.equal(res.status, 400);
     });
 
     it('POST /libros con autorId inexistente da 404', async () => {
-        const res = await api.post('/libros').set(auth()).send({ titulo: 'Huérfano', autorId: 9999 });
+        const res = await api
+            .post('/libros')
+            .set(auth())
+            .send({ titulo: 'Huérfano', autorId: 9999 });
         assert.equal(res.status, 404);
     });
 
     it('POST /libros con stock negativo da 400', async () => {
-        const res = await api.post('/libros').set(auth()).send({ titulo: 'Negativo', autorId: autor.id, stock: -1 });
+        const res = await api
+            .post('/libros')
+            .set(auth())
+            .send({ titulo: 'Negativo', autorId: autor.id, stock: -1 });
         assert.equal(res.status, 400);
     });
 
     it('POST /libros con ISBN repetido da 409', async () => {
-        const res = await api.post('/libros').set(auth()).send({ titulo: 'Copia', autorId: autor.id, isbn: '111' });
+        const res = await api
+            .post('/libros')
+            .set(auth())
+            .send({ titulo: 'Copia', autorId: autor.id, isbn: '111' });
         assert.equal(res.status, 409);
     });
 });
@@ -142,7 +167,7 @@ describe('Libros: paginación', () => {
     it('el total cuenta solo los libros que cumplen el filtro, no la página', async () => {
         const res = await api.get('/libros').query({ titulo: 'cien', limite: 1 });
         assert.equal(res.status, 200);
-        assert.equal(res.body.paginacion.total, 1);    // hay 2 libros, solo 1 coincide
+        assert.equal(res.body.paginacion.total, 1); // hay 2 libros, solo 1 coincide
         assert.equal(res.body.paginacion.totalPaginas, 1);
     });
 
@@ -161,7 +186,13 @@ describe('Libros: paginación', () => {
         assert.equal(res.body.paginacion.total, 2);
     });
 
-    for (const query of [{ limite: 5000 }, { limite: 0 }, { pagina: 0 }, { pagina: 'abc' }, { limite: 1.5 }]) {
+    for (const query of [
+        { limite: 5000 },
+        { limite: 0 },
+        { pagina: 0 },
+        { pagina: 'abc' },
+        { limite: 1.5 },
+    ]) {
         it(`rechaza ${JSON.stringify(query)} con 400`, async () => {
             const res = await api.get('/libros').query(query);
             assert.equal(res.status, 400);

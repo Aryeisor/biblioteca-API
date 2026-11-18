@@ -8,7 +8,12 @@ before(async () => {
     await limpiarTablas();
     ana = await crearUsuarioConToken('Ana', 'ana@correo.com');
     beto = await crearUsuarioConToken('Beto', 'beto@correo.com');
-    biblio = await crearUsuarioConToken('Bibliotecario', 'biblio@correo.com', undefined, 'bibliotecario');
+    biblio = await crearUsuarioConToken(
+        'Bibliotecario',
+        'biblio@correo.com',
+        undefined,
+        'bibliotecario',
+    );
     admin = await crearUsuarioConToken('Admin', 'admin@correo.com', undefined, 'admin');
 });
 after(cerrarPool);
@@ -23,7 +28,10 @@ describe('Usuarios', () => {
             api.put(`/usuarios/${ana.id}`).send({ nombre: 'X', email: 'x@correo.com' }),
             api.delete(`/usuarios/${ana.id}`),
         ]);
-        assert.deepEqual(respuestas.map((r) => r.status), [401, 401, 401, 401]);
+        assert.deepEqual(
+            respuestas.map((r) => r.status),
+            [401, 401, 401, 401],
+        );
     });
 
     it('GET /usuarios como lector da 403', async () => {
@@ -43,8 +51,14 @@ describe('Usuarios', () => {
     it('GET /usuarios pagina: la página 1 y la 2 traen usuarios distintos', async () => {
         const p1 = await api.get('/usuarios').query({ pagina: 1, limite: 3 }).set(bearer(biblio));
         const p2 = await api.get('/usuarios').query({ pagina: 2, limite: 3 }).set(bearer(biblio));
-        assert.deepEqual(p1.body.data.map((u) => u.id), [ana.id, beto.id, biblio.id]);
-        assert.deepEqual(p2.body.data.map((u) => u.id), [admin.id]);
+        assert.deepEqual(
+            p1.body.data.map((u) => u.id),
+            [ana.id, beto.id, biblio.id],
+        );
+        assert.deepEqual(
+            p2.body.data.map((u) => u.id),
+            [admin.id],
+        );
         assert.deepEqual(p2.body.paginacion, { pagina: 2, limite: 3, total: 4, totalPaginas: 2 });
     });
 
@@ -81,7 +95,9 @@ describe('Usuarios', () => {
     });
 
     it('PUT sobre el propio usuario da 200', async () => {
-        const res = await api.put(`/usuarios/${ana.id}`).set(bearer(ana))
+        const res = await api
+            .put(`/usuarios/${ana.id}`)
+            .set(bearer(ana))
             .send({ nombre: 'Ana María', email: 'ana.maria@correo.com' });
         assert.equal(res.status, 200);
         assert.equal(res.body.nombre, 'Ana María');
@@ -94,7 +110,9 @@ describe('Usuarios', () => {
     });
 
     it('PUT sobre otro usuario da 403', async () => {
-        const res = await api.put(`/usuarios/${beto.id}`).set(bearer(ana))
+        const res = await api
+            .put(`/usuarios/${beto.id}`)
+            .set(bearer(ana))
             .send({ nombre: 'Hackeado', email: 'hack@correo.com' });
         assert.equal(res.status, 403);
     });
@@ -105,7 +123,9 @@ describe('Usuarios', () => {
     });
 
     it('PUT de bibliotecario sobre otro usuario da 403', async () => {
-        const res = await api.put(`/usuarios/${beto.id}`).set(bearer(biblio))
+        const res = await api
+            .put(`/usuarios/${beto.id}`)
+            .set(bearer(biblio))
             .send({ nombre: 'Hackeado', email: 'hack@correo.com' });
         assert.equal(res.status, 403);
     });
@@ -129,35 +149,52 @@ describe('Usuarios', () => {
     });
 
     it('PATCH /usuarios/:id/rol como admin cambia el rol (200)', async () => {
-        const res = await api.patch(`/usuarios/${ana.id}/rol`).set(bearer(admin)).send({ rol: 'bibliotecario' });
+        const res = await api
+            .patch(`/usuarios/${ana.id}/rol`)
+            .set(bearer(admin))
+            .send({ rol: 'bibliotecario' });
         assert.equal(res.status, 200);
         assert.equal(res.body.rol, 'bibliotecario');
         assert.equal('password' in res.body, false);
     });
 
     it('PATCH /usuarios/:id/rol como bibliotecario da 403', async () => {
-        const res = await api.patch(`/usuarios/${ana.id}/rol`).set(bearer(biblio)).send({ rol: 'admin' });
+        const res = await api
+            .patch(`/usuarios/${ana.id}/rol`)
+            .set(bearer(biblio))
+            .send({ rol: 'admin' });
         assert.equal(res.status, 403);
         assert.equal(res.body.code, 'PERMISO_DENEGADO');
     });
 
     it('PATCH /usuarios/:id/rol con rol inválido da 400', async () => {
-        const res = await api.patch(`/usuarios/${ana.id}/rol`).set(bearer(admin)).send({ rol: 'superadmin' });
+        const res = await api
+            .patch(`/usuarios/${ana.id}/rol`)
+            .set(bearer(admin))
+            .send({ rol: 'superadmin' });
         assert.equal(res.status, 400);
     });
 
     it('PATCH /usuarios/:id/rol: el admin no puede quitarse el rol a sí mismo (400)', async () => {
-        const res = await api.patch(`/usuarios/${admin.id}/rol`).set(bearer(admin)).send({ rol: 'lector' });
+        const res = await api
+            .patch(`/usuarios/${admin.id}/rol`)
+            .set(bearer(admin))
+            .send({ rol: 'lector' });
         assert.equal(res.status, 400);
     });
 
     it('PATCH /usuarios/:id/rol de un usuario inexistente da 404', async () => {
-        const res = await api.patch('/usuarios/9999/rol').set(bearer(admin)).send({ rol: 'lector' });
+        const res = await api
+            .patch('/usuarios/9999/rol')
+            .set(bearer(admin))
+            .send({ rol: 'lector' });
         assert.equal(res.status, 404);
     });
 
     it('POST /usuarios ya no existe (404)', async () => {
-        const res = await api.post('/usuarios').set(bearer(ana))
+        const res = await api
+            .post('/usuarios')
+            .set(bearer(ana))
             .send({ nombre: 'Nuevo', email: 'nuevo@correo.com' });
         assert.equal(res.status, 404);
     });

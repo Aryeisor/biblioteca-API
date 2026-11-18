@@ -28,7 +28,11 @@ describe('X-Request-Id', () => {
     const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
     // 200 (pública), 401 (sin token) y 404: el id se pone antes que las rutas y la autenticación
-    for (const [ruta, status] of [['/libros', 200], ['/prestamos', 401], [RUTA, 404]]) {
+    for (const [ruta, status] of [
+        ['/libros', 200],
+        ['/prestamos', 401],
+        [RUTA, 404],
+    ]) {
         it(`GET ${ruta} (${status}) trae x-request-id`, async () => {
             const res = await api.get(ruta);
             assert.equal(res.status, status);
@@ -41,7 +45,10 @@ describe('X-Request-Id', () => {
         assert.equal(res.headers['x-request-id'], 'abc-123');
     });
 
-    for (const [caso, valor] of [['muy largo', 'a'.repeat(65)], ['con espacios', 'hola mundo']]) {
+    for (const [caso, valor] of [
+        ['muy largo', 'a'.repeat(65)],
+        ['con espacios', 'hola mundo'],
+    ]) {
         it(`reemplaza un X-Request-Id inválido (${caso}) por uno nuevo`, async () => {
             const res = await api.get(RUTA).set('X-Request-Id', valor);
             assert.match(res.headers['x-request-id'], UUID);
