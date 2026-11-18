@@ -1,6 +1,7 @@
 import { AppError } from "../utils/AppError.js";
 
-export default (err, req, res, next) => {
+// 4 parámetros obligatorios: así Express sabe que es un manejador de errores (_next no se usa)
+export default (err, req, res, _next) => {
   if (err.code === '23503') {
     return res.status(409).json({code: 'REGISTRO_RELACIONADO',
       message: 'No se puede completar: el registro está relacionado con otros datos',
