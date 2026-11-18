@@ -8,6 +8,7 @@ import librosRoutes from './routes/libros.router.js';
 import usuariosRoutes from './routes/usuarios.router.js';
 import prestamosRoutes from './routes/prestamos.router.js';
 import authRoutes from './routes/auth.router.js';
+import healthRoutes from './routes/health.router.js';
 import errorHandler from './middlewares/errorHandler.js';
 import { config } from './config/env.js';
 
@@ -38,6 +39,7 @@ app.use('/libros', librosRoutes);
 app.use('/usuarios', usuariosRoutes);
 app.use('/prestamos', prestamosRoutes);
 app.use('/auth', authRoutes);
+app.use('/health', healthRoutes);
 
 app.use((req,res) =>  res.status(404).json({code: 'RUTA_NO_ENCONTRADA', message: "Ruta no encontrada"}));
 app.use(errorHandler);

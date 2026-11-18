@@ -106,6 +106,8 @@ Requisito: [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 
    La API queda en `http://localhost:3000`. Compose espera a que PostgreSQL esté listo (healthcheck con `pg_isready`) antes de arrancar la API.
 
+   La API también tiene su healthcheck: cada 10 s consulta `GET /health` con `wget`, y `docker compose ps` la muestra como `(healthy)`. Usa `/health` y no `/health/ready` a propósito: si la base se cae, reiniciar la API no lo arregla. Ver [Health checks](#health-checks--health).
+
 - **El esquema se carga solo la primera vez.** `db/schema.sql` se ejecuta automáticamente al crear el volumen de datos (`pgdata`). Si después cambias `schema.sql`, no se vuelve a aplicar: hay que borrar el volumen con `docker compose down -v` (se pierden los datos).
 - **La base del contenedor es independiente de tu PostgreSQL local.** Tienen datos distintos aunque se llamen igual. Compose fija `DB_HOST=db` (el nombre del servicio) y `DB_PORT=5432`, así que los valores de `DB_HOST` y `DB_PORT` de tu `.env` solo se usan al correr la API sin Docker.
 
@@ -115,6 +117,7 @@ Requisito: [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 | `docker compose logs -f api` | Muestra los logs de la API en vivo                      |
 | `docker compose down`        | Detiene y elimina los contenedores (conserva los datos) |
 | `docker compose down -v`     | Igual, pero también **borra el volumen con los datos**  |
+| `docker compose stop api`    | Detiene la API con un [apagado ordenado](#apagado-ordenado-graceful-shutdown) |
 
 No ejecutes `npm run dev` y Docker a la vez: los dos usan el puerto 3000 y el segundo en arrancar falla.
 
@@ -267,6 +270,36 @@ Errores de token (todos con estado `401`):
 
 ## Endpoints
 
+### Health checks — `/health`
+
+Públicos: sin token y sin rate limiting. No muestran detalles internos; el error real queda en los logs.
+
+| Método | Ruta            | Pregunta                           | Respuesta |
+|--------|-----------------|------------------------------------|-----------|
+| GET    | `/health`       | ¿El proceso está vivo? (liveness)  | `200 { "status": "ok" }` siempre que responda; no toca la base |
+| GET    | `/health/ready` | ¿Puede atender peticiones ahora? (readiness) | `200 { "status": "ok" }` si la base responde a `SELECT 1`; `503 APAGANDO` durante el apagado; `503 BD_NO_DISPONIBLE` si la base no responde |
+
+Un balanceador debe usar `/health/ready` para decidir si envía tráfico, y `/health` para decidir si reinicia el proceso.
+
+### Apagado ordenado (graceful shutdown)
+
+Al recibir `SIGTERM` (lo que envía `docker stop`) o `SIGINT` (Ctrl+C), `src/server.js` apaga la API sin cortar las peticiones en curso:
+
+1. Marca el proceso como "apagando": `/health/ready` empieza a responder 503 para que el balanceador deje de enviar tráfico.
+2. `server.close()`: deja de aceptar conexiones nuevas y espera a que terminen las peticiones en curso.
+3. Cierra el pool de PostgreSQL (después del servidor, porque esas últimas peticiones aún lo usan).
+4. Sale con código 0.
+
+Si algo se cuelga, un temporizador de seguridad fuerza la salida con código 1 a los 10 s. En `docker-compose.yml`, `stop_grace_period: 15s` le da tiempo a ese temporizador antes de que Docker mande `SIGKILL`. Una segunda señal no repite el apagado. Cada paso queda en los logs; para comprobarlo:
+
+```bash
+docker compose up -d --build
+docker compose stop api
+docker compose logs api   # señal recibida → servidor HTTP cerrado → pool cerrado → apagado completo
+```
+
+En Windows, fuera de Docker, solo llega `SIGINT` (Ctrl+C).
+
 ### Autores — `/autores`
 
 | Método | Ruta               | Descripción              | Body                     |
@@ -409,6 +442,7 @@ Todos los errores responden con `{ "message": "..." }`, y algunos incluyen adem�
 | 409    | Valor duplicado (ej. ISBN o email repetido), se intenta borrar un registro relacionado (ej. un autor con libros), libro sin stock o préstamo ya devuelto |
 | 429    | Demasiados intentos en `/auth` (ver [rate limiting](#rate-limiting)); incluye el header `Retry-After` |
 | 500    | Error interno del servidor; incluye `requestId` para buscarlo en los [logs](#logs-log_level-y-x-request-id) |
+| 503    | `/health/ready`: la API se está apagando o la base no responde (ver [health checks](#health-checks--health)) |
 
 Valores de `code`:
 
@@ -416,6 +450,8 @@ Valores de `code`:
 |------------------------|--------|--------|
 | `TOKEN_REQUERIDO`      | 401    | No se envió el token |
 | `RUTA_NO_ENCONTRADA`   | 404    | La ruta no existe |
+| `APAGANDO`             | 503    | `/health/ready` durante el apagado |
+| `BD_NO_DISPONIBLE`     | 503    | `/health/ready` cuando la base no responde |
 | `TOKEN_EXPIRADO`       | 401    | El token venció |
 | `TOKEN_INVALIDO`       | 401    | El token es inválido |
 | `JSON_INVALIDO`        | 400    | El cuerpo de la petición no es un JSON válido |
@@ -450,14 +486,15 @@ db/
   init.js             # script que ejecuta schema.sql
   init-test.js        # crea la base de prueba (DB_NAME de .env.test) y recrea sus tablas
 src/
-  server.js           # punto de entrada: conecta a la BD y levanta el servidor
+  server.js           # punto de entrada: conecta a la BD, levanta el servidor y maneja el apagado ordenado
   app.js              # configuración de Express y rutas
   config/
     env.js            # carga y valida las variables de entorno (se detiene si faltan o son inválidas)
     db.js             # conexión (pool) a PostgreSQL
     logger.js         # logger pino (nivel desde LOG_LEVEL, oculta Authorization y password)
+    estado.js         # estado "apagando": lo cambia server.js y lo lee /health/ready
   routes/             # define las rutas
-    auth.router.js, autores.router.js, libros.router.js, prestamos.router.js, usuarios.router.js
+    auth.router.js, autores.router.js, health.router.js, libros.router.js, prestamos.router.js, usuarios.router.js
   controllers/        # traduce la petición HTTP a llamadas al service
     auth_controller.js, autores_controller.js, libros_controller.js, prestamos_controller.js, usuarios_controller.js
   services/           # reglas de negocio y validaciones
