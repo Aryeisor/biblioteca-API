@@ -16,6 +16,39 @@ describe('Headers de seguridad (helmet)', () => {
     });
 });
 
+describe('Ruta inexistente', () => {
+    it('da 404 con code RUTA_NO_ENCONTRADA', async () => {
+        const res = await api.get(RUTA);
+        assert.equal(res.status, 404);
+        assert.equal(res.body.code, 'RUTA_NO_ENCONTRADA');
+    });
+});
+
+describe('X-Request-Id', () => {
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+    // 200 (pública), 401 (sin token) y 404: el id se pone antes que las rutas y la autenticación
+    for (const [ruta, status] of [['/libros', 200], ['/prestamos', 401], [RUTA, 404]]) {
+        it(`GET ${ruta} (${status}) trae x-request-id`, async () => {
+            const res = await api.get(ruta);
+            assert.equal(res.status, status);
+            assert.match(res.headers['x-request-id'], UUID);
+        });
+    }
+
+    it('reutiliza un X-Request-Id válido', async () => {
+        const res = await api.get(RUTA).set('X-Request-Id', 'abc-123');
+        assert.equal(res.headers['x-request-id'], 'abc-123');
+    });
+
+    for (const [caso, valor] of [['muy largo', 'a'.repeat(65)], ['con espacios', 'hola mundo']]) {
+        it(`reemplaza un X-Request-Id inválido (${caso}) por uno nuevo`, async () => {
+            const res = await api.get(RUTA).set('X-Request-Id', valor);
+            assert.match(res.headers['x-request-id'], UUID);
+        });
+    }
+});
+
 describe('CORS', () => {
     const [permitido] = config.corsOrigins;
 

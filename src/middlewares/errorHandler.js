@@ -26,6 +26,7 @@ export default (err, req, res, next) => {
     return res.status(err.status).json({code: err.code, message: err.message});
   }
 
-  console.error(err);
-  res.status(500).json({ code: 'ERROR_INTERNO' ,message: 'Error interno del servidor' });
+  req.log.error({ err }, 'error no controlado');
+  // requestId: el cliente lo reporta y lo buscamos en los logs, sin exponerle el error real
+  res.status(500).json({ code: 'ERROR_INTERNO', message: 'Error interno del servidor', requestId: req.id });
 };

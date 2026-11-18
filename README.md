@@ -37,6 +37,9 @@ Node.js · Express 5 · PostgreSQL · pg · bcryptjs · jsonwebtoken · ES Modul
    # Frontends que pueden llamar a la API, separados por comas (vacío = ninguno)
    CORS_ORIGINS=
 
+   # Nivel de logs: fatal, error, warn, info (por defecto), debug, trace o silent
+   LOG_LEVEL=info
+
    DB_HOST=localhost
    DB_PORT=5432
    DB_USER=postgres
@@ -57,11 +60,12 @@ Node.js · Express 5 · PostgreSQL · pg · bcryptjs · jsonwebtoken · ES Modul
 
    Al arrancar, `src/config/env.js` valida la configuración y la app se detiene con un mensaje claro si algo está mal:
 
-   - Todas las variables de arriba son obligatorias, salvo `TRUST_PROXY` y `CORS_ORIGINS`; si falta alguna, indica cuáles.
+   - Todas las variables de arriba son obligatorias, salvo `TRUST_PROXY`, `CORS_ORIGINS` y `LOG_LEVEL`; si falta alguna, indica cuáles.
    - `PORT` y `DB_PORT` deben ser enteros entre 1 y 65535.
    - `JWT_SECRET` debe tener al menos 32 caracteres.
    - `TRUST_PROXY` es opcional (por defecto `0`) y debe ser un entero ≥ 0. Ver [IP real detrás de un proxy](#ip-real-detrás-de-un-proxy-trust_proxy).
    - `CORS_ORIGINS` es opcional (por defecto ninguno). Ver [CORS y headers de seguridad](#cors-y-headers-de-seguridad-cors_origins).
+   - `LOG_LEVEL` es opcional (por defecto `info`) y debe ser uno de los niveles de arriba. Ver [Logs](#logs-log_level-y-x-request-id).
 
 4. Crear la base de datos en PostgreSQL (desde psql o pgAdmin):
 
@@ -80,7 +84,7 @@ Node.js · Express 5 · PostgreSQL · pg · bcryptjs · jsonwebtoken · ES Modul
 ## Uso
 
 ```bash
-npm run dev   # desarrollo, se reinicia al guardar cambios
+npm run dev   # desarrollo, se reinicia al guardar cambios y muestra los logs legibles (pino-pretty)
 npm start     # producción
 ```
 
@@ -137,7 +141,10 @@ Los tests usan el test runner nativo de Node (`node:test` con `node:assert/stric
    JWT_SECRET=secreto_de_prueba_solo_para_tests
    JWT_EXPIRES_IN=1h
    CORS_ORIGINS=http://localhost:5173
+   LOG_LEVEL=silent
    ```
+
+   `LOG_LEVEL=silent` evita que los logs llenen la salida de `npm test`.
 
    Igual que el `.env`, el `.env.test` real no se sube al repositorio.
 
@@ -205,6 +212,20 @@ Limitación: los contadores viven en la memoria del proceso. Se pierden al reini
 - **helmet** agrega headers de seguridad a cada respuesta (por ejemplo `X-Content-Type-Options: nosniff`) y quita `X-Powered-By`, que delataba que la API usa Express.
 - **cors** solo agrega `Access-Control-Allow-Origin` cuando el `Origin` de la petición está en `CORS_ORIGINS`. Con otro origen no responde error: no pone el header y es el **navegador** el que bloquea la respuesta. Por eso CORS no protege contra curl ni Postman; solo controla qué páginas web pueden leer la API desde el navegador.
 - Va antes de las rutas y de la autenticación: el preflight `OPTIONS` del navegador no trae el token, así que si llegara al middleware de auth recibiría 401 y el navegador cancelaría la petición real.
+
+### Logs (`LOG_LEVEL` y `X-Request-Id`)
+
+La API usa [pino](https://github.com/pinojs/pino) con `pino-http`: escribe una línea JSON por petición (método, ruta, status, duración) y por cada error.
+
+- **Formato:** en producción (`npm start`, Docker) sale en JSON, listo para un sistema de logs. `npm run dev` lo pasa por `pino-pretty` para leerlo en la terminal.
+- **Nivel:** `LOG_LEVEL` (por defecto `info`). En los tests es `silent`.
+- **Datos ocultos:** el header `Authorization` y cualquier campo `password` se reemplazan por `[OCULTO]` antes de escribir el log.
+- **`X-Request-Id`:** cada respuesta trae este header con el id de la petición, y el mismo id aparece en sus logs (`reqId`). Si el cliente envía su propio `X-Request-Id`, se reutiliza solo si tiene de 1 a 64 caracteres entre letras, números, `.`, `_` y `-`; si no, se genera un UUID nuevo. Así un cliente no puede meter textos enormes ni caracteres raros en los logs.
+- **Errores 500:** la respuesta incluye el `requestId`. El cliente puede reportarlo y con él se busca el error completo en los logs, sin mostrarle detalles internos:
+
+  ```json
+  { "code": "ERROR_INTERNO", "message": "Error interno del servidor", "requestId": "3f2b8c1e-..." }
+  ```
 
 ### IP real detrás de un proxy (`TRUST_PROXY`)
 
@@ -387,13 +408,14 @@ Todos los errores responden con `{ "message": "..." }`, y algunos incluyen adem�
 | 404    | El registro o la ruta no existe                               |
 | 409    | Valor duplicado (ej. ISBN o email repetido), se intenta borrar un registro relacionado (ej. un autor con libros), libro sin stock o préstamo ya devuelto |
 | 429    | Demasiados intentos en `/auth` (ver [rate limiting](#rate-limiting)); incluye el header `Retry-After` |
-| 500    | Error interno del servidor                                    |
+| 500    | Error interno del servidor; incluye `requestId` para buscarlo en los [logs](#logs-log_level-y-x-request-id) |
 
 Valores de `code`:
 
 | `code`                 | Estado | Cuándo |
 |------------------------|--------|--------|
 | `TOKEN_REQUERIDO`      | 401    | No se envió el token |
+| `RUTA_NO_ENCONTRADA`   | 404    | La ruta no existe |
 | `TOKEN_EXPIRADO`       | 401    | El token venció |
 | `TOKEN_INVALIDO`       | 401    | El token es inválido |
 | `JSON_INVALIDO`        | 400    | El cuerpo de la petición no es un JSON válido |
@@ -405,6 +427,7 @@ Valores de `code`:
 | `DEMASIADAS_PETICIONES`| 429    | Más de 20 logins desde la misma IP en 15 min |
 | `DEMASIADOS_INTENTOS`  | 429    | Más de 5 logins con el mismo email en 15 min |
 | `DEMASIADOS_REGISTROS` | 429    | Más de 10 registros desde la misma IP en 1 hora |
+| `ERROR_INTERNO`        | 500    | Error no controlado del servidor (la respuesta trae `requestId`) |
 
 Internamente, los services lanzan `AppError(status, message, code)` ([src/utils/AppError.js](src/utils/AppError.js)) y el middleware [errorHandler.js](src/middlewares/errorHandler.js) lo convierte en la respuesta HTTP.
 
@@ -432,6 +455,7 @@ src/
   config/
     env.js            # carga y valida las variables de entorno (se detiene si faltan o son inválidas)
     db.js             # conexión (pool) a PostgreSQL
+    logger.js         # logger pino (nivel desde LOG_LEVEL, oculta Authorization y password)
   routes/             # define las rutas
     auth.router.js, autores.router.js, libros.router.js, prestamos.router.js, usuarios.router.js
   controllers/        # traduce la petición HTTP a llamadas al service
