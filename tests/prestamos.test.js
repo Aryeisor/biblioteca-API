@@ -1,6 +1,13 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { api, limpiarTablas, cerrarPool, crearUsuarioConToken, crearAutor, crearLibro } from './helpers.js';
+import {
+    api,
+    limpiarTablas,
+    cerrarPool,
+    crearUsuarioConToken,
+    crearAutor,
+    crearLibro,
+} from './helpers.js';
 import pool from '../src/config/db.js';
 
 let ana, beto, biblio, libro, sinStock, otroLibro, prestamo, prestamoBeto;
@@ -9,11 +16,20 @@ before(async () => {
     await limpiarTablas();
     ana = await crearUsuarioConToken('Ana', 'ana@correo.com');
     beto = await crearUsuarioConToken('Beto', 'beto@correo.com');
-    biblio = await crearUsuarioConToken('Bibliotecario', 'biblio@correo.com', undefined, 'bibliotecario');
+    biblio = await crearUsuarioConToken(
+        'Bibliotecario',
+        'biblio@correo.com',
+        undefined,
+        'bibliotecario',
+    );
     const autor = await crearAutor(biblio.token, 'Jorge Luis Borges');
     libro = await crearLibro(biblio.token, { titulo: 'Ficciones', autorId: autor.id, stock: 2 });
     sinStock = await crearLibro(biblio.token, { titulo: 'El Aleph', autorId: autor.id, stock: 0 });
-    otroLibro = await crearLibro(biblio.token, { titulo: 'El libro de arena', autorId: autor.id, stock: 5 });
+    otroLibro = await crearLibro(biblio.token, {
+        titulo: 'El libro de arena',
+        autorId: autor.id,
+        stock: 5,
+    });
 });
 after(cerrarPool);
 
@@ -68,14 +84,20 @@ describe('Préstamos', () => {
         const activos = await api.get('/prestamos').query({ activos: 'true' }).set(bearer(biblio));
         assert.equal(activos.status, 200);
         assert.equal(todos.body.data.length, 2);
-        assert.deepEqual(activos.body.data.map((p) => p.id), [prestamo.id]);
+        assert.deepEqual(
+            activos.body.data.map((p) => p.id),
+            [prestamo.id],
+        );
         assert.ok(activos.body.data.every((p) => p.fecha_devolucion === null));
     });
 
     it('un lector que lista préstamos solo ve los suyos', async () => {
         const res = await api.get('/prestamos').set(bearer(ana));
         assert.equal(res.status, 200);
-        assert.deepEqual(res.body.data.map((p) => p.id), [prestamo.id]);
+        assert.deepEqual(
+            res.body.data.map((p) => p.id),
+            [prestamo.id],
+        );
     });
 
     it('GET /prestamos/:id: el lector ve el suyo (200) pero no el ajeno (403)', async () => {
@@ -101,20 +123,30 @@ describe('Préstamos', () => {
     });
 
     it('si un lector envía usuarioId, se ignora y el préstamo queda a su nombre', async () => {
-        const res = await api.post('/prestamos').set(bearer(ana)).send({ libroId: otroLibro.id, usuarioId: beto.id });
+        const res = await api
+            .post('/prestamos')
+            .set(bearer(ana))
+            .send({ libroId: otroLibro.id, usuarioId: beto.id });
         assert.equal(res.status, 201);
         assert.equal(res.body.usuario_id, ana.id);
     });
 
     it('el bibliotecario puede prestar a nombre de otro usuario', async () => {
-        const res = await api.post('/prestamos').set(bearer(biblio)).send({ libroId: otroLibro.id, usuarioId: beto.id });
+        const res = await api
+            .post('/prestamos')
+            .set(bearer(biblio))
+            .send({ libroId: otroLibro.id, usuarioId: beto.id });
         assert.equal(res.status, 201);
         assert.equal(res.body.usuario_id, beto.id);
     });
 
     it('prestar el mismo libro dos veces da 409 PRESTAMO_DUPLICADO y el stock baja solo 1', async () => {
         const autor = await api.get('/autores').then((r) => r.body[0]);
-        const repetido = await crearLibro(biblio.token, { titulo: 'Otras inquisiciones', autorId: autor.id, stock: 3 });
+        const repetido = await crearLibro(biblio.token, {
+            titulo: 'Otras inquisiciones',
+            autorId: autor.id,
+            stock: 3,
+        });
 
         await api.post('/prestamos').set(bearer(ana)).send({ libroId: repetido.id }).expect(201);
         const res = await api.post('/prestamos').set(bearer(ana)).send({ libroId: repetido.id });
@@ -127,7 +159,11 @@ describe('Préstamos', () => {
     it('concurrencia: el mismo préstamo dos veces en paralelo da un 201 y un 409 PRESTAMO_DUPLICADO', async () => {
         const autor = await api.get('/autores').then((r) => r.body[0]);
         // stock 3: que el 409 solo pueda venir del índice único, no de la falta de stock
-        const paralelo = await crearLibro(biblio.token, { titulo: 'Discusión', autorId: autor.id, stock: 3 });
+        const paralelo = await crearLibro(biblio.token, {
+            titulo: 'Discusión',
+            autorId: autor.id,
+            stock: 3,
+        });
 
         const respuestas = await Promise.all([
             api.post('/prestamos').set(bearer(beto)).send({ libroId: paralelo.id }),
@@ -140,7 +176,11 @@ describe('Préstamos', () => {
 
     it('concurrencia: con stock 1, dos préstamos en paralelo dan un 201 y un 409', async () => {
         const autor = await api.get('/autores').then((r) => r.body[0]);
-        const unico = await crearLibro(biblio.token, { titulo: 'El jardín de senderos', autorId: autor.id, stock: 1 });
+        const unico = await crearLibro(biblio.token, {
+            titulo: 'El jardín de senderos',
+            autorId: autor.id,
+            stock: 1,
+        });
 
         const respuestas = await Promise.all([
             api.post('/prestamos').set(bearer(ana)).send({ libroId: unico.id }),
@@ -157,8 +197,12 @@ describe('Préstamos: paginación con cursor', () => {
     const recorrer = async (usuario, query) => {
         const ids = [];
         let cursor;
-        for (let i = 0; i < 50; i++) { // tope de seguridad: un bug no debe colgar la prueba
-            const res = await api.get('/prestamos').query({ ...query, cursor }).set(bearer(usuario));
+        for (let i = 0; i < 50; i++) {
+            // tope de seguridad: un bug no debe colgar la prueba
+            const res = await api
+                .get('/prestamos')
+                .query({ ...query, cursor })
+                .set(bearer(usuario));
             assert.equal(res.status, 200);
             assert.ok(res.body.data.length > 0, 'con limite + 1 nunca debe salir una página vacía');
             assert.ok(res.body.data.length <= query.limite);
@@ -171,16 +215,27 @@ describe('Préstamos: paginación con cursor', () => {
 
     // La verdad sale de la base, no de la API que estamos probando.
     const idsEnBase = async (where = 'TRUE', params = []) =>
-        (await pool.query(`SELECT id FROM prestamos WHERE ${where} ORDER BY id DESC`, params)).rows.map((r) => r.id);
+        (
+            await pool.query(`SELECT id FROM prestamos WHERE ${where} ORDER BY id DESC`, params)
+        ).rows.map((r) => r.id);
 
     before(async () => {
         const autor = await api.get('/autores').then((r) => r.body[0]);
         const usuarios = [ana, beto, ana, ana, beto, ana, beto, ana];
         for (const [i, u] of usuarios.entries()) {
             // un libro por préstamo: uq_prestamo_activo no deja repetir un préstamo activo de la misma pareja
-            const libroN = await crearLibro(biblio.token, { titulo: `Historia universal de la infamia ${i}`, autorId: autor.id, stock: 1 });
-            const { body } = await api.post('/prestamos').set(bearer(u)).send({ libroId: libroN.id }).expect(201);
-            if (body.id % 3 === 0) await api.patch(`/prestamos/${body.id}/devolver`).set(bearer(biblio)).expect(200);
+            const libroN = await crearLibro(biblio.token, {
+                titulo: `Historia universal de la infamia ${i}`,
+                autorId: autor.id,
+                stock: 1,
+            });
+            const { body } = await api
+                .post('/prestamos')
+                .set(bearer(u))
+                .send({ libroId: libroN.id })
+                .expect(201);
+            if (body.id % 3 === 0)
+                await api.patch(`/prestamos/${body.id}/devolver`).set(bearer(biblio)).expect(200);
         }
     });
 
@@ -205,7 +260,12 @@ describe('Préstamos: paginación con cursor', () => {
         assert.equal(res.body.paginacion.siguienteCursor, null);
     });
 
-    const invalidos = ['abc', '', Buffer.from('{"id":"x"}').toString('base64url'), Buffer.from('{"id":-1}').toString('base64url')];
+    const invalidos = [
+        'abc',
+        '',
+        Buffer.from('{"id":"x"}').toString('base64url'),
+        Buffer.from('{"id":-1}').toString('base64url'),
+    ];
     for (const cursor of invalidos) {
         it(`cursor inválido ${JSON.stringify(cursor)} da 400 CURSOR_INVALIDO`, async () => {
             const res = await api.get('/prestamos').query({ cursor }).set(bearer(biblio));

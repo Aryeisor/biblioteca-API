@@ -11,7 +11,7 @@ services:
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
       # $$ evita que compose interpole; lo resuelve el shell del contenedor
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -20,7 +20,7 @@ services:
   api:
     build: .
     ports:
-      - "${PORT:-3000}:${PORT:-3000}"
+      - '${PORT:-3000}:${PORT:-3000}'
     environment:
       PORT: ${PORT:-3000}
       DB_HOST: db
@@ -30,6 +30,16 @@ services:
       DB_NAME: ${DB_NAME}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    healthcheck:
+      # liveness, no readiness: si la base cae, reiniciar la API no lo arregla
+      test: ['CMD', 'wget', '-q', '--spider', 'http://localhost:${PORT:-3000}/health']
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    # más que el temporizador de seguridad de server.js (10 s): Docker manda SIGKILL al vencer
+    stop_grace_period: 15s
     depends_on:
       db:
         condition: service_healthy
