@@ -8,7 +8,7 @@ const PORT = config.port;
 // Si las peticiones en curso no terminan en este tiempo, se fuerza la salida
 const TIEMPO_MAXIMO_APAGADO_MS = 10_000;
 
-//try catch para el manejo de la se conecto a la base de datos o no se pudo conectar
+// Comprobar la base antes de abrir el puerto: sin base, la API no sirve y es mejor no arrancar
 try {
     await pool.query('SELECT 1')
     logger.info('conectado a la base de datos')
@@ -55,6 +55,8 @@ const apagar = (señal) => {
         logger.info('apagado completo');
         process.exit(0);
     });
+    // server.close() espera también a las conexiones keep-alive inactivas: cerrarlas ya (las que tienen una petición en curso terminan)
+    server.closeIdleConnections();
 };
 
 process.on('SIGTERM', () => apagar('SIGTERM')); // lo que envía Docker en `docker stop`

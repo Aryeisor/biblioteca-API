@@ -22,6 +22,9 @@ const REQUEST_ID_VALIDO = /^[A-Za-z0-9._-]{1,64}$/;
 
 app.use(pinoHttp({
     logger,
+    // Docker consulta /health cada 10 s: sin esto serían ~8.640 líneas al día que no dicen nada.
+    // Solo se omite la línea automática; los errores de /health/ready se siguen registrando con req.log
+    autoLogging: { ignore: (req) => /^\/health(\/|\?|$)/.test(req.originalUrl ?? req.url) },
     genReqId: (req, res) => {
         const entrante = req.headers['x-request-id'];
         // typeof primero: test(undefined) convierte a "undefined" y pasaría la regex

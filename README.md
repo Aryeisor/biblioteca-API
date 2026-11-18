@@ -220,6 +220,7 @@ Limitación: los contadores viven en la memoria del proceso. Se pierden al reini
 
 La API usa [pino](https://github.com/pinojs/pino) con `pino-http`: escribe una línea JSON por petición (método, ruta, status, duración) y por cada error.
 
+- **Health checks:** `/health` y `/health/ready` no generan la línea automática por petición (el healthcheck de Docker las llama cada 10 s); si `/health/ready` falla, el error sí queda en el log.
 - **Formato:** en producción (`npm start`, Docker) sale en JSON, listo para un sistema de logs. `npm run dev` lo pasa por `pino-pretty` para leerlo en la terminal.
 - **Nivel:** `LOG_LEVEL` (por defecto `info`). En los tests es `silent`.
 - **Datos ocultos:** el header `Authorization` y cualquier campo `password` se reemplazan por `[OCULTO]` antes de escribir el log.
@@ -287,6 +288,7 @@ Al recibir `SIGTERM` (lo que envía `docker stop`) o `SIGINT` (Ctrl+C), `src/ser
 
 1. Marca el proceso como "apagando": `/health/ready` empieza a responder 503 para que el balanceador deje de enviar tráfico.
 2. `server.close()`: deja de aceptar conexiones nuevas y espera a que terminen las peticiones en curso.
+   Además cierra de inmediato las conexiones keep-alive inactivas (`server.closeIdleConnections()`), que si no retrasarían el cierre.
 3. Cierra el pool de PostgreSQL (después del servidor, porque esas últimas peticiones aún lo usan).
 4. Sale con código 0.
 
