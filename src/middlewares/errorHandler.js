@@ -6,6 +6,10 @@ export default (err, req, res, next) => {
       message: 'No se puede completar: el registro está relacionado con otros datos',
     });
   }
+  // antes del 23505 genérico: err.constraint dice qué índice único se violó
+  if (err.code === '23505' && err.constraint === 'uq_prestamo_activo') {
+    return res.status(409).json({code: 'PRESTAMO_DUPLICADO', message: 'Ya tienes este libro prestado' });
+  }
   if (err.code === '23505') {
     return res.status(409).json({code: 'REGISTRO_DUPLICADO', message: 'Ya existe un registro con ese valor' });
   }

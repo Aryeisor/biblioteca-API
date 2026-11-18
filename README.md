@@ -389,6 +389,7 @@ Valores de `code`:
 | `CURSOR_INVALIDO`      | 400    | El `cursor` de `GET /prestamos` no es válido (no salió de una respuesta de la API) |
 | `PETICION_INVALIDA`    | 4xx    | Otros errores de la petición detectados por Express (ej. cuerpo demasiado grande) |
 | `REGISTRO_DUPLICADO`   | 409    | Valor único repetido (ISBN, email) |
+| `PRESTAMO_DUPLICADO`   | 409    | El usuario ya tiene un préstamo activo de ese libro |
 | `REGISTRO_RELACIONADO` | 409    | El registro está relacionado con otros datos (ej. borrar un autor con libros) |
 | `DEMASIADAS_PETICIONES`| 429    | Más de 20 logins desde la misma IP en 15 min |
 | `DEMASIADOS_INTENTOS`  | 429    | Más de 5 logins con el mismo email en 15 min |
