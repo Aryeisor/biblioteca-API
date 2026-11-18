@@ -40,3 +40,8 @@ CREATE INDEX IF NOT EXISTS idx_libros_autor_id ON libros(autor_id);
 CREATE INDEX IF NOT EXISTS idx_prestamos_libro_id ON prestamos(libro_id);
 -- compuesto (migración 002): cubre la FK usuario_id y la paginación por cursor sobre id
 CREATE INDEX IF NOT EXISTS idx_prestamos_usuario_id_id ON prestamos(usuario_id, id);
+
+-- migración 003: un solo préstamo activo por pareja libro-usuario
+CREATE UNIQUE INDEX IF NOT EXISTS uq_prestamo_activo
+  ON prestamos (libro_id, usuario_id)
+  WHERE fecha_devolucion IS NULL;
