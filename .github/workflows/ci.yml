@@ -1,0 +1,72 @@
+name: CI
+
+# Se ejecuta en cada PR hacia main y en cada push a main.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Mínimo privilegio: el workflow solo puede leer el repositorio.
+permissions:
+  contents: read
+
+# Si subes un commit nuevo a la misma rama, cancela la ejecución anterior (ahorra minutos).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    name: Lint, formato y tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # PostgreSQL real para los tests (el mismo motor que en producción, no un mock).
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres_ci
+        ports:
+          - 5432:5432
+        # Los pasos esperan a que la base esté lista antes de arrancar.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # npm ci: instala exactamente lo de package-lock.json (reproducible), a diferencia de npm install.
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      - name: Formato (Prettier)
+        run: npm run format:check
+
+      # .env.test está en .gitignore, así que en CI se genera desde el ejemplo.
+      # La contraseña debe coincidir con POSTGRES_PASSWORD del servicio de arriba.
+      - name: Crear .env.test para CI
+        run: |
+          cp .env.test.example .env.test
+          sed -i 's/^DB_PASSWORD=.*/DB_PASSWORD=postgres_ci/' .env.test
+
+      - name: Preparar base de datos de prueba
+        run: npm run db:init:test
+
+      - name: Tests
+        run: npm test
