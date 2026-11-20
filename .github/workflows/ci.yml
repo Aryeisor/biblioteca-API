@@ -58,6 +58,15 @@ jobs:
       - name: Formato (Prettier)
         run: npm run format:check
 
+      - name: Chequeo de tipos (TypeScript)
+        run: npm run typecheck
+
+      - name: Compilar
+        run: npm run build
+
+      - name: Construir imagen Docker
+        run: docker build -t biblioteca-api .
+
       # .env.test está en .gitignore, así que en CI se genera desde el ejemplo.
       # La contraseña debe coincidir con POSTGRES_PASSWORD del servicio de arriba.
       - name: Crear .env.test para CI
