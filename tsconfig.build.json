@@ -1,0 +1,12 @@
+{
+  // Compilación para producción: hereda todo de tsconfig.json y solo cambia lo necesario
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "sourceMap": true
+  },
+  // Solo el código de la aplicación: ni tests ni scripts de base de datos
+  "include": ["src"]
+}
