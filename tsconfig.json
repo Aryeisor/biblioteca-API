@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    // --- Qué JavaScript genera y cómo resuelve los imports (igual que Node con "type": "module") ---
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2023"],
+    // Solo los tipos de Node; sin esto TypeScript carga todos los @types instalados
+    "types": ["node"],
+
+    // --- Migración gradual: .js y .ts conviven ---
+    "allowJs": true,
+    // false = los .js NO se verifican todavía; cada archivo que migremos a .ts sí
+    "checkJs": false,
+
+    // --- Rigor: lo que hace útil a TypeScript ---
+    "strict": true,
+    // rows[0] pasa a ser "Libro | undefined": te obliga a manejar el caso "no hay filas"
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+
+    // --- Solo sintaxis "borrable": funciona con tsc, tsx y el type stripping de Node ---
+    // Prohíbe enum y namespace, que generan código real en vez de solo tipos
+    "erasableSyntaxOnly": true,
+    // Obliga a escribir "import type" cuando solo se importa un tipo
+    "verbatimModuleSyntax": true,
+
+    "skipLibCheck": true,
+    // Por defecto tsc solo verifica; el build usa tsconfig.build.json
+    "noEmit": true
+  },
+  "include": ["src", "db", "tests"]
+}
