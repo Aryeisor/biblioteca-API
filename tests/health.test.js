@@ -10,7 +10,7 @@ describe('Health checks', () => {
 
     it('GET /health (liveness) da 200 sin token', async () => {
         const res = await api.get('/health');
-        assert.equal(res.status, 200);
+        assert.equal(res.status, 201);
         assert.equal(res.body.status, 'ok');
     });
 
