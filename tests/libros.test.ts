@@ -7,9 +7,13 @@ import {
     crearUsuarioConToken,
     crearAutor,
     crearLibro,
+    type AutorApi,
 } from './helpers.js';
+import type { Libro } from '../src/types/dominio.js';
 
-let token, autor, libro;
+let token: string;
+let autor: AutorApi;
+let libro: Libro;
 
 before(async () => {
     await limpiarTablas();

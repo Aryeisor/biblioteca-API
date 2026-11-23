@@ -10,7 +10,7 @@ try {
     await pool.query(schema);
     console.log('tablas creadas');
 } catch (error) {
-    console.error('error al crear las tablas:', error.message);
+    console.error('error al crear las tablas:', error instanceof Error ? error.message : error);
     process.exitCode = 1;
 } finally {
     await pool.end();

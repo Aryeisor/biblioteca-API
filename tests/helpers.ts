@@ -3,6 +3,11 @@ import request from 'supertest';
 import app from '../src/app.js';
 import pool from '../src/config/db.js';
 import { reiniciarLimites } from '../src/middlewares/rateLimit.js';
+import type { Libro, Rol } from '../src/types/dominio.js';
+
+// Un usuario ya registrado y con sesión iniciada: lo que devuelve crearUsuarioConToken
+export type Sesion = { id: number; token: string };
+export type AutorApi = { id: number; nombre: string };
 
 // Supertest usa siempre la misma IP: vaciar los contadores antes de cada test (límites reales, sin desactivarlos)
 beforeEach(reiniciarLimites);
@@ -20,7 +25,12 @@ export const limpiarTablas = () =>
 export const cerrarPool = () => pool.end();
 
 // rol se asigna por SQL (como el primer admin): la API siempre registra como lector
-export const crearUsuarioConToken = async (nombre, email, password = 'clave12345', rol) => {
+export const crearUsuarioConToken = async (
+    nombre: string,
+    email: string,
+    password = 'clave12345',
+    rol?: Rol,
+): Promise<Sesion> => {
     const { body: usuario } = await api
         .post('/auth/registrar')
         .send({ nombre, email, password })
@@ -30,7 +40,7 @@ export const crearUsuarioConToken = async (nombre, email, password = 'clave12345
     return { id: usuario.id, token: body.token };
 };
 
-export const crearAutor = async (token, nombre) => {
+export const crearAutor = async (token: string, nombre: string): Promise<AutorApi> => {
     const { body } = await api
         .post('/autores')
         .set('Authorization', `Bearer ${token}`)
@@ -39,7 +49,12 @@ export const crearAutor = async (token, nombre) => {
     return body;
 };
 
-export const crearLibro = async (token, { titulo, autorId, stock, isbn }) => {
+type DatosNuevoLibro = { titulo: string; autorId: number; stock?: number; isbn?: string };
+
+export const crearLibro = async (
+    token: string,
+    { titulo, autorId, stock, isbn }: DatosNuevoLibro,
+): Promise<Libro> => {
     const { body } = await api
         .post('/libros')
         .set('Authorization', `Bearer ${token}`)

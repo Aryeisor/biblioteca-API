@@ -1,8 +1,11 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { api, limpiarTablas, cerrarPool, crearUsuarioConToken } from './helpers.js';
+import { api, limpiarTablas, cerrarPool, crearUsuarioConToken, type Sesion } from './helpers.js';
 
-let ana, beto, biblio, admin;
+let ana: Sesion;
+let beto: Sesion;
+let biblio: Sesion;
+let admin: Sesion;
 
 before(async () => {
     await limpiarTablas();
@@ -18,7 +21,7 @@ before(async () => {
 });
 after(cerrarPool);
 
-const bearer = (u) => ({ Authorization: `Bearer ${u.token}` });
+const bearer = (u: Sesion) => ({ Authorization: `Bearer ${u.token}` });
 
 describe('Usuarios', () => {
     it('todas las rutas sin token dan 401', async () => {
@@ -44,7 +47,7 @@ describe('Usuarios', () => {
         const res = await api.get('/usuarios').set(bearer(biblio));
         assert.equal(res.status, 200);
         assert.equal(res.body.data.length, 4);
-        assert.ok(res.body.data.every((u) => !('password' in u) && !('total' in u)));
+        assert.ok(res.body.data.every((u: object) => !('password' in u) && !('total' in u)));
         assert.deepEqual(res.body.paginacion, { pagina: 1, limite: 20, total: 4, totalPaginas: 1 });
     });
 
@@ -52,11 +55,11 @@ describe('Usuarios', () => {
         const p1 = await api.get('/usuarios').query({ pagina: 1, limite: 3 }).set(bearer(biblio));
         const p2 = await api.get('/usuarios').query({ pagina: 2, limite: 3 }).set(bearer(biblio));
         assert.deepEqual(
-            p1.body.data.map((u) => u.id),
+            p1.body.data.map((u: { id: number }) => u.id),
             [ana.id, beto.id, biblio.id],
         );
         assert.deepEqual(
-            p2.body.data.map((u) => u.id),
+            p2.body.data.map((u: { id: number }) => u.id),
             [admin.id],
         );
         assert.deepEqual(p2.body.paginacion, { pagina: 2, limite: 3, total: 4, totalPaginas: 2 });

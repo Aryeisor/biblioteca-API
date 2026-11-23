@@ -2,7 +2,7 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { api, limpiarTablas, cerrarPool, crearUsuarioConToken } from './helpers.js';
 
-let token;
+let token: string;
 
 before(async () => {
     await limpiarTablas();

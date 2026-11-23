@@ -17,10 +17,10 @@ if (!/^[A-Za-z0-9_]+$/.test(DB_NAME)) {
     process.exit(1);
 }
 
-const conexion = (database) =>
+const conexion = (database: string) =>
     new pg.Client({
         host: DB_HOST,
-        port: DB_PORT,
+        port: DB_PORT ? Number(DB_PORT) : undefined,
         user: DB_USER,
         password: DB_PASSWORD,
         database,
@@ -39,7 +39,10 @@ try {
         console.log(`Base de datos ${DB_NAME} ya existe`);
     }
 } catch (error) {
-    console.error('error al crear la base de datos:', error.message);
+    console.error(
+        'error al crear la base de datos:',
+        error instanceof Error ? error.message : error,
+    );
     process.exitCode = 1;
 } finally {
     await admin.end();
@@ -55,7 +58,7 @@ if (!process.exitCode) {
         await test.query(schema);
         console.log('Tablas creadas');
     } catch (error) {
-        console.error('error al crear las tablas:', error.message);
+        console.error('error al crear las tablas:', error instanceof Error ? error.message : error);
         process.exitCode = 1;
     } finally {
         await test.end();
