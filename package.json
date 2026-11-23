@@ -7,9 +7,9 @@
   "scripts": {
     "dev": "tsx watch src/server.ts | pino-pretty",
     "start": "node dist/server.js",
-    "db:init": "tsx db/init.js",
-    "db:init:test": "node db/init-test.js",
-    "test": "node --env-file=.env.test --import tsx --test --test-concurrency=1 \"tests/**/*.test.js\"",
+    "db:init": "tsx db/init.ts",
+    "db:init:test": "tsx db/init-test.ts",
+    "test": "node --env-file=.env.test --import tsx --test --test-concurrency=1 \"tests/**/*.test.ts\"",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

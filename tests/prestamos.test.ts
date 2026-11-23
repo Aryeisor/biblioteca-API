@@ -7,10 +7,21 @@ import {
     crearUsuarioConToken,
     crearAutor,
     crearLibro,
+    type Sesion,
 } from './helpers.js';
 import pool from '../src/config/db.js';
+import type { Libro } from '../src/types/dominio.js';
 
-let ana, beto, biblio, libro, sinStock, otroLibro, prestamo, prestamoBeto;
+type PrestamoApi = { id: number };
+
+let ana: Sesion;
+let beto: Sesion;
+let biblio: Sesion;
+let libro: Libro;
+let sinStock: Libro;
+let otroLibro: Libro;
+let prestamo: PrestamoApi;
+let prestamoBeto: PrestamoApi;
 
 before(async () => {
     await limpiarTablas();
@@ -33,8 +44,8 @@ before(async () => {
 });
 after(cerrarPool);
 
-const bearer = (u) => ({ Authorization: `Bearer ${u.token}` });
-const stockDe = async (id) => (await api.get(`/libros/${id}`)).body.stock;
+const bearer = (u: Sesion) => ({ Authorization: `Bearer ${u.token}` });
+const stockDe = async (id: number): Promise<number> => (await api.get(`/libros/${id}`)).body.stock;
 
 describe('Préstamos', () => {
     it('presta un libro: 201, usuario del token y el stock baja en 1', async () => {
@@ -85,17 +96,21 @@ describe('Préstamos', () => {
         assert.equal(activos.status, 200);
         assert.equal(todos.body.data.length, 2);
         assert.deepEqual(
-            activos.body.data.map((p) => p.id),
+            activos.body.data.map((p: PrestamoApi) => p.id),
             [prestamo.id],
         );
-        assert.ok(activos.body.data.every((p) => p.fecha_devolucion === null));
+        assert.ok(
+            activos.body.data.every(
+                (p: { fecha_devolucion: string | null }) => p.fecha_devolucion === null,
+            ),
+        );
     });
 
     it('un lector que lista préstamos solo ve los suyos', async () => {
         const res = await api.get('/prestamos').set(bearer(ana));
         assert.equal(res.status, 200);
         assert.deepEqual(
-            res.body.data.map((p) => p.id),
+            res.body.data.map((p: PrestamoApi) => p.id),
             [prestamo.id],
         );
     });
@@ -170,7 +185,7 @@ describe('Préstamos', () => {
             api.post('/prestamos').set(bearer(beto)).send({ libroId: paralelo.id }),
         ]);
         assert.deepEqual(respuestas.map((r) => r.status).sort(), [201, 409]);
-        assert.equal(respuestas.find((r) => r.status === 409).body.code, 'PRESTAMO_DUPLICADO');
+        assert.equal(respuestas.find((r) => r.status === 409)?.body.code, 'PRESTAMO_DUPLICADO');
         assert.equal(await stockDe(paralelo.id), 2);
     });
 
@@ -194,9 +209,12 @@ describe('Préstamos', () => {
 
 describe('Préstamos: paginación con cursor', () => {
     // Sigue siguienteCursor hasta null y devuelve todos los ids en el orden recibido.
-    const recorrer = async (usuario, query) => {
-        const ids = [];
-        let cursor;
+    const recorrer = async (
+        usuario: Sesion,
+        query: { limite: number; activos?: string },
+    ): Promise<number[]> => {
+        const ids: number[] = [];
+        let cursor: string | undefined;
         for (let i = 0; i < 50; i++) {
             // tope de seguridad: un bug no debe colgar la prueba
             const res = await api
@@ -206,7 +224,7 @@ describe('Préstamos: paginación con cursor', () => {
             assert.equal(res.status, 200);
             assert.ok(res.body.data.length > 0, 'con limite + 1 nunca debe salir una página vacía');
             assert.ok(res.body.data.length <= query.limite);
-            ids.push(...res.body.data.map((p) => p.id));
+            ids.push(...res.body.data.map((p: PrestamoApi) => p.id));
             cursor = res.body.paginacion.siguienteCursor;
             if (cursor === null) return ids;
         }
@@ -214,9 +232,12 @@ describe('Préstamos: paginación con cursor', () => {
     };
 
     // La verdad sale de la base, no de la API que estamos probando.
-    const idsEnBase = async (where = 'TRUE', params = []) =>
+    const idsEnBase = async (where = 'TRUE', params: unknown[] = []): Promise<number[]> =>
         (
-            await pool.query(`SELECT id FROM prestamos WHERE ${where} ORDER BY id DESC`, params)
+            await pool.query<{ id: number }>(
+                `SELECT id FROM prestamos WHERE ${where} ORDER BY id DESC`,
+                params,
+            )
         ).rows.map((r) => r.id);
 
     before(async () => {
