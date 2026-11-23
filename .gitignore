@@ -3,4 +3,5 @@ dist
 .env
 .env.test
 .claude
-code-review-biblioteca-api.md
+.md
+
