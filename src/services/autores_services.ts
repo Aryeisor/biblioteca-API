@@ -4,7 +4,8 @@ import * as repo from '../repositories/autores_repositories.js';
 import { AppError } from '../utils/AppError.js';
 import { validarId } from '../utils/validators.js';
 
-const validarNombre = (nombre) => {
+// unknown: viene del body de la petición. El typeof de abajo lo convierte en string.
+const validarNombre = (nombre: unknown): string => {
     if (typeof nombre !== 'string' || nombre.trim() === '') {
         throw new AppError(400, 'El nombre es obligatorio');
     }
@@ -16,21 +17,21 @@ const validarNombre = (nombre) => {
 
 export const listar = () => repo.listar();
 
-export const obtener = async (id) => {
+export const obtener = async (id: unknown) => {
     const autor = await repo.buscarPorId(validarId(id));
     if (!autor) throw new AppError(404, 'Autor no encontrado');
     return autor;
 };
 
-export const crear = (nombre) => repo.crear(validarNombre(nombre));
+export const crear = (nombre: unknown) => repo.crear(validarNombre(nombre));
 
-export const actualizar = async (id, nombre) => {
+export const actualizar = async (id: unknown, nombre: unknown) => {
     const autor = await repo.actualizar(validarId(id), validarNombre(nombre));
     if (!autor) throw new AppError(404, 'Autor no encontrado');
     return autor;
 };
 
-export const eliminar = async (id) => {
+export const eliminar = async (id: unknown) => {
     const eliminado = await repo.eliminar(validarId(id));
     if (!eliminado) throw new AppError(404, 'Autor no encontrado');
 };

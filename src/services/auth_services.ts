@@ -10,7 +10,7 @@ const COSTO_BCRYPT = 10;
 // para que comparar contra él tarde lo mismo que contra un usuario que existe.
 const HASH_FICTICIO = await bcrypt.hash('hash-ficticio-anti-enumeracion', COSTO_BCRYPT);
 
-const validarPassword = (password) => {
+const validarPassword = (password: unknown): string => {
     if (typeof password !== 'string' || password.trim() === '') {
         throw new AppError(400, 'La contraseña es obligatoria');
     }
@@ -24,7 +24,7 @@ const validarPassword = (password) => {
     return password;
 };
 
-export const registrar = async (nombre, email, password) => {
+export const registrar = async (nombre: unknown, email: unknown, password: unknown) => {
     const nombreLimpio = validarNombre(nombre);
     const emailLimpio = validarEmail(email);
     const passwordValida = validarPassword(password);
@@ -34,7 +34,7 @@ export const registrar = async (nombre, email, password) => {
     return repo.crearConPassword(nombreLimpio, emailLimpio, hash);
 };
 
-export const login = async (email, password) => {
+export const login = async (email: unknown, password: unknown) => {
     // 1. validar que email y password lleguen como texto (400 si no)
     if (typeof email !== 'string' || typeof password !== 'string' || password.trim() === '')
         throw new AppError(400, 'Email y contraseñas son obligatorios');
@@ -51,6 +51,7 @@ export const login = async (email, password) => {
         throw new AppError(401, 'Credenciales invalidas');
     }
     // 5. bcrypt.compare(password, usuario.password) -> si es false, 401 "Credenciales inválidas"
+    // Aquí TypeScript ya sabe que buscarUsuario existe y que password es string (no null)
     const ok = await bcrypt.compare(password, buscarUsuario.password);
     if (!ok) {
         throw new AppError(401, 'Credenciales invalidas');

@@ -1,4 +1,7 @@
+import type { PoolClient } from 'pg';
 import pool from '../config/db.js';
+import type { DatosLibro, FilaConTotal, Id, Libro, LibroBloqueado } from '../types/dominio.js';
+import { primeraFila } from '../utils/filas.js';
 
 const SELECT_BASE = `
   SELECT l.id, l.titulo, l.isbn, l.stock, l.autor_id, a.nombre AS autor
@@ -15,8 +18,14 @@ const SELECT_BASE = `
 //COUNT(*) OVER(): window function. Cuenta las filas que cumplen el WHERE ANTES del LIMIT y pega ese total en cada fila.
 //LIMIT $2: cuántas filas devolver (tamaño de página). OFFSET $3: cuántas saltarse (pagina - 1) * limite.
 //Si limite es null, PostgreSQL lo toma como LIMIT ALL (sin límite).
-export const listar = async (titulo = null, limite = null, offset = 0) => {
-    const { rows } = await pool.query(
+//
+// Ojo: "titulo = null" sin anotar el tipo haría que TypeScript infiera el tipo `null` (y nada más).
+export const listar = async (
+    titulo: string | null = null,
+    limite: number | null = null,
+    offset = 0,
+): Promise<FilaConTotal<Libro>[]> => {
+    const { rows } = await pool.query<FilaConTotal<Libro>>(
         `
      SELECT l.id, l.titulo, l.isbn, l.stock, l.autor_id, a.nombre AS autor,
             COUNT(*) OVER() AS total
@@ -31,23 +40,26 @@ export const listar = async (titulo = null, limite = null, offset = 0) => {
     return rows;
 };
 
-export const buscarPorId = async (id) => {
-    const { rows } = await pool.query(`${SELECT_BASE} WHERE l.id = $1`, [id]);
+export const buscarPorId = async (id: number): Promise<Libro | undefined> => {
+    const { rows } = await pool.query<Libro>(`${SELECT_BASE} WHERE l.id = $1`, [id]);
     return rows[0];
 };
 
-export const crear = async ({ titulo, isbn, autorId, stock }) => {
-    const { rows } = await pool.query(
+export const crear = async ({ titulo, isbn, autorId, stock }: DatosLibro): Promise<Id> => {
+    const { rows } = await pool.query<Id>(
         `INSERT INTO libros (titulo, isbn, autor_id, stock)
      VALUES ($1, $2, $3, $4) RETURNING id`,
         [titulo, isbn, autorId, stock],
     );
 
-    return rows[0];
+    return primeraFila(rows, 'INSERT libros');
 };
 
-export const actualizar = async (id, { titulo, isbn, autorId, stock }) => {
-    const { rows } = await pool.query(
+export const actualizar = async (
+    id: number,
+    { titulo, isbn, autorId, stock }: DatosLibro,
+): Promise<Id | undefined> => {
+    const { rows } = await pool.query<Id>(
         `UPDATE libros
      SET titulo = $1, isbn = $2, autor_id = $3, stock = $4
      WHERE id = $5 RETURNING id`,
@@ -57,14 +69,17 @@ export const actualizar = async (id, { titulo, isbn, autorId, stock }) => {
     return rows[0];
 };
 
-export const eliminar = async (id) => {
+export const eliminar = async (id: number): Promise<boolean> => {
     const { rowCount } = await pool.query('DELETE FROM libros WHERE id = $1', [id]);
 
-    return rowCount > 0;
+    return (rowCount ?? 0) > 0;
 };
 
-export const actualizarStock = async (id, { stock }) => {
-    const { rows } = await pool.query(
+export const actualizarStock = async (
+    id: number,
+    { stock }: { stock: number },
+): Promise<Id | undefined> => {
+    const { rows } = await pool.query<Id>(
         `UPDATE libros
      SET stock = $1 WHERE id = $2 RETURNING id`,
         [stock, id],
@@ -72,13 +87,22 @@ export const actualizarStock = async (id, { stock }) => {
     return rows[0];
 };
 
-export const bloquearPorId = async (client, id) => {
-    const { rows } = await client.query('SELECT id, stock FROM libros WHERE id = $1 FOR UPDATE', [
-        id,
-    ]);
+// client: la conexión de la transacción abierta por el servicio (por eso no usa el pool)
+export const bloquearPorId = async (
+    client: PoolClient,
+    id: number,
+): Promise<LibroBloqueado | undefined> => {
+    const { rows } = await client.query<LibroBloqueado>(
+        'SELECT id, stock FROM libros WHERE id = $1 FOR UPDATE',
+        [id],
+    );
     return rows[0];
 };
 
-export const cambiarStock = async (client, id, delta) => {
+export const cambiarStock = async (
+    client: PoolClient,
+    id: number,
+    delta: number,
+): Promise<void> => {
     await client.query('UPDATE libros SET stock = stock + $1 WHERE id = $2', [delta, id]);
 };

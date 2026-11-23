@@ -2,9 +2,13 @@ import * as repo from '../repositories/libros_repositories.js';
 import * as autoresRepo from '../repositories/autores_repositories.js';
 import { AppError } from '../utils/AppError.js';
 import { validarId } from '../utils/validators.js';
-import { paginarOffset } from '../utils/paginacion.js';
+import { paginarOffset, type ParametrosPagina } from '../utils/paginacion.js';
+import type { DatosLibro } from '../types/dominio.js';
 
-const validarLibro = ({ titulo, isbn, autorId, stock }) => {
+// Lo que llega en el body: puede ser cualquier cosa. validarLibro lo convierte en DatosLibro (ya verificado).
+type EntradaLibro = { titulo?: unknown; isbn?: unknown; autorId?: unknown; stock?: unknown };
+
+const validarLibro = ({ titulo, isbn, autorId, stock }: EntradaLibro): DatosLibro => {
     if (typeof titulo !== 'string' || titulo.trim() === '') {
         throw new AppError(400, 'El título es obligatorio');
     }
@@ -12,7 +16,7 @@ const validarLibro = ({ titulo, isbn, autorId, stock }) => {
         throw new AppError(400, 'El título no puede superar 200 caracteres');
     }
 
-    let isbnLimpio = null;
+    let isbnLimpio: string | null = null;
     if (isbn !== undefined && isbn !== null && isbn !== '') {
         if (typeof isbn !== 'string' || isbn.trim().length > 20) {
             throw new AppError(400, 'ISBN inválido (máximo 20 caracteres)');
@@ -33,12 +37,12 @@ const validarLibro = ({ titulo, isbn, autorId, stock }) => {
     };
 };
 
-const verificarAutor = async (autorId) => {
+const verificarAutor = async (autorId: number) => {
     const autor = await autoresRepo.buscarPorId(autorId);
     if (!autor) throw new AppError(404, 'El autor indicado no existe');
 };
 
-export const actualizarStock = async (id, stock) => {
+export const actualizarStock = async (id: unknown, stock: unknown) => {
     const libroId = validarId(id);
     if (stock === undefined || stock === null || stock === '')
         throw new AppError(400, 'El stock es obligatorio');
@@ -53,25 +57,32 @@ export const actualizarStock = async (id, stock) => {
     return repo.buscarPorId(libroId);
 };
 
-export const listar = ({ titulo, pagina, limite } = {}) => {
-    const filtro = titulo?.trim() || null;
+type FiltroLibros = ParametrosPagina & { titulo?: unknown };
+
+export const listar = ({ titulo, pagina, limite }: FiltroLibros = {}) => {
+    // ?titulo=a&titulo=b llega como arreglo: antes hacía .trim() sobre él y respondía 500.
+    // Con titulo: unknown TypeScript obliga a comprobar el tipo, y el bug sale a la luz.
+    if (titulo !== undefined && typeof titulo !== 'string') {
+        throw new AppError(400, 'El filtro titulo debe ser texto');
+    }
+    const filtro = typeof titulo === 'string' ? titulo.trim() || null : null;
     return paginarOffset({ pagina, limite }, (lim, offset) => repo.listar(filtro, lim, offset));
 };
 
-export const obtener = async (id) => {
+export const obtener = async (id: unknown) => {
     const libro = await repo.buscarPorId(validarId(id));
     if (!libro) throw new AppError(404, 'Libro no encontrado');
     return libro;
 };
 
-export const crear = async (datos) => {
+export const crear = async (datos: EntradaLibro) => {
     const libro = validarLibro(datos);
     await verificarAutor(libro.autorId);
     const { id } = await repo.crear(libro);
     return repo.buscarPorId(id);
 };
 
-export const actualizar = async (id, datos) => {
+export const actualizar = async (id: unknown, datos: EntradaLibro) => {
     const libroId = validarId(id);
     const libro = validarLibro(datos);
     await verificarAutor(libro.autorId);
@@ -80,7 +91,7 @@ export const actualizar = async (id, datos) => {
     return repo.buscarPorId(libroId);
 };
 
-export const eliminar = async (id) => {
+export const eliminar = async (id: unknown) => {
     const eliminado = await repo.eliminar(validarId(id));
     if (!eliminado) throw new AppError(404, 'Libro no encontrado');
 };
