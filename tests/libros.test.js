@@ -152,6 +152,11 @@ describe('Libros: filtro por título', () => {
         assert.equal(res.body.paginacion.total, 0);
         assert.equal(res.body.paginacion.totalPaginas, 0);
     });
+
+    it('GET /libros?titulo=a&titulo=b (arreglo) da 400, no 500', async () => {
+        const res = await api.get('/libros?titulo=a&titulo=b');
+        assert.equal(res.status, 400);
+    });
 });
 
 describe('Libros: paginación', () => {

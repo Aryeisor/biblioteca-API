@@ -84,10 +84,24 @@ const validarLogLevel = (valor = 'info'): NivelLog => {
     return valor;
 };
 
+// JWT_EXPIRES_IN: jsonwebtoken solo acepta duraciones como "15m", "1h" o "7d". Antes un valor
+// inválido se descubría en el primer login (500); ahora se detecta al arrancar (fail fast).
+// El tipo Duracion (texto "número + unidad") es el que exige jwt.sign para expiresIn.
+type Duracion = `${number}${'s' | 'm' | 'h' | 'd'}`;
+const esDuracion = (valor: string): valor is Duracion => /^\d+[smhd]$/.test(valor);
+
+const validarDuracion = (valor: string, nombre: string): Duracion => {
+    if (!esDuracion(valor)) {
+        log.fatal(`${nombre} invalido: "${valor}" (ejemplos: 15m, 1h, 7d)`);
+        process.exit(1);
+    }
+    return valor;
+};
+
 // 3. Exportar la configuración ya limpia y con los tipos correctos
 export const config = {
     jwtSecret,
-    jwtExpiresIn,
+    jwtExpiresIn: validarDuracion(jwtExpiresIn, 'JWT_EXPIRES_IN'),
     port: validarPort(port, 'PORT'),
     trustProxy: validarTrustProxy(process.env.TRUST_PROXY),
     corsOrigins: parsearOrigins(process.env.CORS_ORIGINS),
