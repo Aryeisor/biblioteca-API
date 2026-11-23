@@ -1,21 +1,24 @@
 # Biblioteca API
 
-API REST para gestionar una biblioteca: autores, libros, usuarios y préstamos. Hecha con Node.js, Express 5 y PostgreSQL.
+API REST para gestionar una biblioteca: autores, libros, usuarios y préstamos. Hecha con Node.js, TypeScript, Express 5 y PostgreSQL.
 
 ## Tecnologías
 
-Node.js 22 · Express 5 · PostgreSQL 17 · ES Modules
+Node.js 22 · TypeScript (strict) · Express 5 · PostgreSQL 17 · ES Modules
 
-| Área          | Qué se usa                                                                |
-| ------------- | ------------------------------------------------------------------------- |
-| Base de datos | `pg` (pool y transacciones), SQL escrito a mano en `src/repositories/`    |
-| Autenticación | `jsonwebtoken` (HS256) · `bcryptjs` · RBAC propio (`authorize`)           |
-| Seguridad     | `helmet` · `cors` con lista de orígenes · rate limiting propio en memoria |
-| Configuración | `dotenv` + validación propia de variables en `src/config/env.js`          |
-| Logs          | `pino` + `pino-http` (`pino-pretty` en desarrollo)                        |
-| Pruebas       | `node:test` + `node:assert/strict` + `supertest`                          |
-| Calidad       | ESLint 10 + Prettier                                                      |
-| Contenedores  | Docker + Docker Compose (API + PostgreSQL 17)                             |
+| Área          | Qué se usa                                                                          |
+| ------------- | ----------------------------------------------------------------------------------- |
+| Lenguaje      | TypeScript estricto: `tsx` en desarrollo y pruebas, `tsc` para compilar a `dist/`   |
+| Validación    | `zod`: los esquemas de `src/schemas/` validan la entrada y de ellos salen los tipos |
+| Base de datos | `pg` (pool y transacciones), SQL escrito a mano en `src/repositories/`              |
+| Autenticación | `jsonwebtoken` (HS256) · `bcryptjs` · RBAC propio (`authorize`)                     |
+| Seguridad     | `helmet` · `cors` con lista de orígenes · rate limiting propio en memoria           |
+| Configuración | `dotenv` + validación propia de variables en `src/config/env.ts`                    |
+| Logs          | `pino` + `pino-http` (`pino-pretty` en desarrollo)                                  |
+| Pruebas       | `node:test` + `node:assert/strict` + `supertest`                                    |
+| Calidad       | ESLint 10 (`typescript-eslint`) + Prettier + `tsc --noEmit`                         |
+| CI            | GitHub Actions: lint, formato, tipos, build, imagen Docker y pruebas                |
+| Contenedores  | Docker + Docker Compose (API + PostgreSQL 17)                                       |
 
 ## Requisitos
 
@@ -69,7 +72,7 @@ Node.js 22 · Express 5 · PostgreSQL 17 · ES Modules
 
    Nunca subas el `.env` real al repositorio (contiene la contraseña de la BD y el secreto del JWT); solo se sube `.env.example`.
 
-   Al arrancar, `src/config/env.js` valida la configuración y la app se detiene con un mensaje claro si algo está mal:
+   Al arrancar, `src/config/env.ts` valida la configuración y la app se detiene con un mensaje claro si algo está mal:
 
    - Todas las variables de arriba son obligatorias, salvo `TRUST_PROXY`, `CORS_ORIGINS` y `LOG_LEVEL`; si falta alguna, indica cuáles.
    - `PORT` y `DB_PORT` deben ser enteros entre 1 y 65535.
@@ -95,11 +98,13 @@ Node.js 22 · Express 5 · PostgreSQL 17 · ES Modules
 ## Uso
 
 ```bash
-npm run dev   # desarrollo, se reinicia al guardar cambios y muestra los logs legibles (pino-pretty)
-npm start     # producción
+npm run dev   # desarrollo con tsx, se reinicia al guardar cambios y muestra los logs legibles (pino-pretty)
+npm run build # compila src/ a JavaScript en dist/
+npm start     # producción: ejecuta dist/server.js (primero hay que hacer build)
 
 npm test             # pruebas (ver Pruebas)
 npm run lint         # ESLint sobre todo el proyecto
+npm run typecheck    # tsc --noEmit: revisa los tipos de src, tests y db sin generar archivos
 npm run format       # Prettier: formatea los archivos
 npm run format:check # Prettier: solo revisa, no escribe (útil en CI)
 ```
@@ -185,7 +190,7 @@ Los tests usan el test runner nativo de Node (`node:test` con `node:assert/stric
 
 Como protección, tanto `npm run db:init:test` como los tests se niegan a correr si `DB_NAME` no termina en `_test`.
 
-Supertest hace todas las peticiones desde la misma IP, así que los tests chocarían con el [rate limiting](#rate-limiting). En vez de desactivarlo, `tests/helpers.js` llama a `reiniciarLimites()` en un `beforeEach`: cada test empieza con los contadores en 0 y se prueba con los límites reales.
+Supertest hace todas las peticiones desde la misma IP, así que los tests chocarían con el [rate limiting](#rate-limiting). En vez de desactivarlo, `tests/helpers.ts` llama a `reiniciarLimites()` en un `beforeEach`: cada test empieza con los contadores en 0 y se prueba con los límites reales.
 
 Los tests cubren:
 
@@ -217,7 +222,7 @@ La API usa JWT. Las contraseñas se guardan como hash con bcrypt y nunca se devu
 
 ### Rate limiting
 
-Las rutas de `/auth` tienen límite de intentos para frenar la fuerza bruta ([src/middlewares/rateLimit.js](src/middlewares/rateLimit.js), ventana fija):
+Las rutas de `/auth` tienen límite de intentos para frenar la fuerza bruta ([src/middlewares/rateLimit.ts](src/middlewares/rateLimit.ts), ventana fija):
 
 | Ruta                   | Clave                                | Límite         | `code` al superarlo     |
 | ---------------------- | ------------------------------------ | -------------- | ----------------------- |
@@ -272,7 +277,7 @@ El token se firma y se verifica solo con el algoritmo `HS256` (se rechaza cualqu
 
 ### Rutas protegidas y roles (RBAC)
 
-Cada usuario tiene un rol: `lector` (por defecto), `bibliotecario` o `admin`. El rol se guarda en la columna `usuarios.rol`, viaja dentro del JWT y lo verifica el middleware [authorize.js](src/middlewares/authorize.js) en cada ruta. Si el rol no alcanza, la respuesta es `403` con `code: "PERMISO_DENEGADO"`.
+Cada usuario tiene un rol: `lector` (por defecto), `bibliotecario` o `admin`. El rol se guarda en la columna `usuarios.rol`, viaja dentro del JWT y lo verifica el middleware [authorize.ts](src/middlewares/authorize.ts) en cada ruta. Si el rol no alcanza, la respuesta es `403` con `code: "PERMISO_DENEGADO"`.
 
 | Módulo    | Públicas (sin token)                       | lector                                                           | bibliotecario                                        | admin                            |
 | --------- | ------------------------------------------ | ---------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------- |
@@ -315,7 +320,7 @@ Un balanceador debe usar `/health/ready` para decidir si envía tráfico, y `/he
 
 ### Apagado ordenado (graceful shutdown)
 
-Al recibir `SIGTERM` (lo que envía `docker stop`) o `SIGINT` (Ctrl+C), `src/server.js` apaga la API sin cortar las peticiones en curso:
+Al recibir `SIGTERM` (lo que envía `docker stop`) o `SIGINT` (Ctrl+C), `src/server.ts` apaga la API sin cortar las peticiones en curso:
 
 1. Marca el proceso como "apagando": `/health/ready` empieza a responder 503 para que el balanceador deje de enviar tráfico.
 2. `server.close()`: deja de aceptar conexiones nuevas y espera a que terminen las peticiones en curso.
@@ -515,7 +520,7 @@ Valores de `code`:
 | `DEMASIADOS_REGISTROS`  | 429    | Más de 10 registros desde la misma IP en 1 hora                                           |
 | `ERROR_INTERNO`         | 500    | Error no controlado del servidor (la respuesta trae `requestId`)                          |
 
-Internamente, los services lanzan `AppError(status, message, code)` ([src/utils/AppError.js](src/utils/AppError.js)) y el middleware [errorHandler.js](src/middlewares/errorHandler.js) lo convierte en la respuesta HTTP.
+Internamente, los services lanzan `AppError(status, message, code)` ([src/utils/AppError.ts](src/utils/AppError.ts)) y el middleware [errorHandler.ts](src/middlewares/errorHandler.ts) lo convierte en la respuesta HTTP.
 
 ## Base de datos
 
@@ -535,40 +540,49 @@ El esquema completo está en [db/schema.sql](db/schema.sql), que ya incluye la c
 ```
 db/
   schema.sql          # tablas e índices (ya incluye todo lo de migrations/)
-  init.js             # script que ejecuta schema.sql
-  init-test.js        # crea la base de prueba (DB_NAME de .env.test) y recrea sus tablas
+  init.ts             # script que ejecuta schema.sql
+  init-test.ts        # crea la base de prueba (DB_NAME de .env.test) y recrea sus tablas
   migrations/         # historial para bases ya existentes (001 rol, 002 índice, 003 préstamo único)
   scripts/            # seed-rendimiento.sql: datos de prueba para medir consultas
 docs/
   rbac-matriz-permisos.md  # matriz de permisos por rol y las decisiones detrás
 src/
-  server.js           # punto de entrada: conecta a la BD, levanta el servidor y maneja el apagado ordenado
-  app.js              # configuración de Express y rutas
+  server.ts           # punto de entrada: conecta a la BD, levanta el servidor y maneja el apagado ordenado
+  app.ts              # configuración de Express y rutas
   config/
-    env.js            # carga y valida las variables de entorno (se detiene si faltan o son inválidas)
-    db.js             # conexión (pool) a PostgreSQL
-    logger.js         # logger pino (nivel desde LOG_LEVEL, oculta Authorization y password)
-    estado.js         # estado "apagando": lo cambia server.js y lo lee /health/ready
+    env.ts            # carga y valida las variables de entorno (se detiene si faltan o son inválidas)
+    db.ts             # conexión (pool) a PostgreSQL
+    logger.ts         # logger pino (nivel desde LOG_LEVEL, oculta Authorization y password)
+    estado.ts         # estado "apagando": lo cambia server.ts y lo lee /health/ready
   routes/             # define las rutas
-    auth.router.js, autores.router.js, health.router.js, libros.router.js, prestamos.router.js, usuarios.router.js
+    auth.router.ts, autores.router.ts, health.router.ts, libros.router.ts, prestamos.router.ts, usuarios.router.ts
   controllers/        # traduce la petición HTTP a llamadas al service
-    auth_controller.js, autores_controller.js, libros_controller.js, prestamos_controller.js, usuarios_controller.js
-  services/           # reglas de negocio y validaciones
-    auth_services.js, autores_services.js, libros_services.js, prestamos_services.js, usuarios_services.js
-  repositories/       # consultas SQL
-    autores_repositories.js, libros_repositories.js, prestamos_repositories.js, usuarios_repositories.js
+    auth_controller.ts, autores_controller.ts, libros_controller.ts, prestamos_controller.ts, usuarios_controller.ts
+  services/           # reglas de negocio; validan la entrada con los esquemas
+    auth_services.ts, autores_services.ts, libros_services.ts, prestamos_services.ts, usuarios_services.ts
+  schemas/            # esquemas de Zod: validan la entrada y de ellos salen los tipos (z.infer)
+    comunes.ts        # parsear(), validarId, paginación y texto obligatorio
+    autores.ts, libros.ts, prestamos.ts, usuarios.ts
+  repositories/       # consultas SQL tipadas
+    autores_repositories.ts, libros_repositories.ts, prestamos_repositories.ts, usuarios_repositories.ts
   middlewares/        # token JWT, roles, rate limiting y manejo de errores
-    auth.js, authorize.js, rateLimit.js, errorHandler.js
+    auth.ts, authorize.ts, rateLimit.ts, errorHandler.ts
+  types/
+    dominio.ts        # tipos de las entidades (Autor, Libro, Usuario, Prestamo) y de los roles
+    express.d.ts      # añade req.user (id y rol) al Request de Express
   utils/              # código compartido
-    AppError.js       # error con status HTTP y code
-    validators.js     # validarId y validarEntero, usados por los services
-    paginacion.js     # paginación por offset compartida por libros y usuarios
+    AppError.ts       # error con status HTTP y code
+    paginacion.ts     # paginación por offset compartida por libros y usuarios
+    filas.ts          # primeraFila: una fila garantizada de un INSERT ... RETURNING
 tests/                # tests con node:test y Supertest contra la base de prueba
-  helpers.js, auth.test.js, autores.test.js, health.test.js, libros.test.js,
-  prestamos.test.js, seguridad.test.js, usuarios.test.js
-eslint.config.js      # reglas de ESLint (npm run lint)
+  helpers.ts, auth.test.ts, autores.test.ts, health.test.ts, libros.test.ts,
+  prestamos.test.ts, seguridad.test.ts, usuarios.test.ts
+.github/workflows/ci.yml  # integración continua (GitHub Actions)
+tsconfig.json         # TypeScript estricto para revisar tipos (npm run typecheck)
+tsconfig.build.json   # build: compila solo src/ a dist/ (npm run build)
+eslint.config.js      # reglas de ESLint con typescript-eslint (npm run lint)
 .prettierrc           # formato de Prettier (npm run format)
-Dockerfile            # imagen de la API (node:22-alpine, solo dependencias de producción, usuario no root)
+Dockerfile            # imagen en dos etapas: compila con tsc y publica solo dist/ y las dependencias de producción (usuario no root)
 docker-compose.yml    # servicios api y db (PostgreSQL 17) con volumen de datos
 .dockerignore         # archivos que no entran en la imagen (.env, node_modules, tests...)
 ```
@@ -577,23 +591,26 @@ docker-compose.yml    # servicios api y db (PostgreSQL 17) con volumen de datos
 
 Resumen de todo lo que ya tiene el proyecto, con el enlace a su explicación:
 
-| Área                | Qué está hecho                                                                                                                                    |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Arquitectura        | Capas separadas: router → controller → service → repository; errores con `AppError` y un único `errorHandler`                                     |
-| Autenticación       | JWT firmado y verificado solo con HS256, contraseñas con bcrypt, login de tiempo constante ([ver](#autenticación))                                |
-| Autorización (RBAC) | Roles `lector`, `bibliotecario` y `admin`; `authorize` en cada ruta y reglas de propiedad en los services ([ver](#rutas-protegidas-y-roles-rbac)) |
-| Rate limiting       | Límite por IP y por email en `/auth`, con `Retry-After` ([ver](#rate-limiting))                                                                   |
-| Headers y CORS      | helmet + lista de orígenes permitidos ([ver](#cors-y-headers-de-seguridad-cors_origins))                                                          |
-| IP real             | `trust proxy` configurable para que el límite por IP funcione detrás de un proxy ([ver](#ip-real-detrás-de-un-proxy-trust_proxy))                 |
-| Configuración       | Todas las variables se validan al arrancar; la app no sube con una configuración inválida ([ver](#instalación))                                   |
-| Logs                | pino en JSON, `X-Request-Id` en cada respuesta, `Authorization` y `password` ocultos ([ver](#logs-log_level-y-x-request-id))                      |
-| Health y apagado    | `/health` y `/health/ready`, apagado ordenado con SIGTERM/SIGINT ([ver](#health-checks--health))                                                  |
-| Paginación          | Por offset en libros y usuarios, por cursor en préstamos ([ver](#paginación-de-get-libros))                                                       |
-| Integridad de datos | Transacciones con `SELECT ... FOR UPDATE` al prestar y devolver, `CHECK` de stock, índice único parcial de préstamo activo                        |
-| Rendimiento         | Índices en las llaves foráneas e índice compuesto `(usuario_id, id)` para la paginación por cursor                                                |
-| Pruebas             | `node:test` + Supertest contra una base aparte, incluida una prueba de concurrencia ([ver](#pruebas))                                             |
-| Contenedores        | Dockerfile sin dependencias de desarrollo y con usuario no root, Compose con PostgreSQL 17 y healthchecks ([ver](#ejecución-con-docker))          |
-| Calidad de código   | ESLint y Prettier (`npm run lint`, `npm run format`)                                                                                              |
+| Área                 | Qué está hecho                                                                                                                                                                           |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Arquitectura         | Capas separadas: router → controller → service → repository; errores con `AppError` y un único `errorHandler`                                                                            |
+| Autenticación        | JWT firmado y verificado solo con HS256, contraseñas con bcrypt, login de tiempo constante ([ver](#autenticación))                                                                       |
+| Autorización (RBAC)  | Roles `lector`, `bibliotecario` y `admin`; `authorize` en cada ruta y reglas de propiedad en los services ([ver](#rutas-protegidas-y-roles-rbac))                                        |
+| Rate limiting        | Límite por IP y por email en `/auth`, con `Retry-After` ([ver](#rate-limiting))                                                                                                          |
+| Headers y CORS       | helmet + lista de orígenes permitidos ([ver](#cors-y-headers-de-seguridad-cors_origins))                                                                                                 |
+| IP real              | `trust proxy` configurable para que el límite por IP funcione detrás de un proxy ([ver](#ip-real-detrás-de-un-proxy-trust_proxy))                                                        |
+| Configuración        | Todas las variables se validan al arrancar; la app no sube con una configuración inválida ([ver](#instalación))                                                                          |
+| Logs                 | pino en JSON, `X-Request-Id` en cada respuesta, `Authorization` y `password` ocultos ([ver](#logs-log_level-y-x-request-id))                                                             |
+| Health y apagado     | `/health` y `/health/ready`, apagado ordenado con SIGTERM/SIGINT ([ver](#health-checks--health))                                                                                         |
+| Paginación           | Por offset en libros y usuarios, por cursor en préstamos ([ver](#paginación-de-get-libros))                                                                                              |
+| Integridad de datos  | Transacciones con `SELECT ... FOR UPDATE` al prestar y devolver, `CHECK` de stock, índice único parcial de préstamo activo                                                               |
+| Rendimiento          | Índices en las llaves foráneas e índice compuesto `(usuario_id, id)` para la paginación por cursor                                                                                       |
+| Pruebas              | `node:test` + Supertest contra una base aparte, incluida una prueba de concurrencia ([ver](#pruebas))                                                                                    |
+| TypeScript           | Modo estricto, entidades y roles tipados, `req.user` tipado, `tsc` en el build y en CI                                                                                                   |
+| Validación           | Esquemas de Zod en `src/schemas/`; los tipos de entrada se infieren del esquema                                                                                                          |
+| Integración continua | GitHub Actions en cada PR (lint, formato, tipos, build, imagen Docker y pruebas con PostgreSQL) y rama `main` protegida                                                                  |
+| Contenedores         | Dockerfile en dos etapas (compila y publica solo `dist/`), sin dependencias de desarrollo y con usuario no root, Compose con PostgreSQL 17 y healthchecks ([ver](#ejecución-con-docker)) |
+| Calidad de código    | ESLint con `typescript-eslint`, Prettier y `npm run typecheck`                                                                                                                           |
 
 ## Próximos pasos
 
@@ -606,13 +623,16 @@ Resumen de todo lo que ya tiene el proyecto, con el enlace a su explicación:
 - [x] helmet, CORS, logs con pino, health checks y apagado ordenado
 - [x] ESLint y Prettier
 
-### Fase 1: migrar a TypeScript
+### Fase 1: TypeScript y CI ✅
 
-- [ ] Configurar TypeScript (`tsconfig.json`, build y `npm run dev` con tipos) y ESLint con `typescript-eslint`
-- [ ] Migrar por capas, de abajo hacia arriba: `utils` y `config` → `repositories` → `services` → `controllers` y `routes`
-- [ ] Tipar las entidades (`Autor`, `Libro`, `Usuario`, `Prestamo`), los roles y los resultados de las consultas de `pg`
-- [ ] Tipar `req.user` (id y rol) para que el RBAC no dependa de `any`
-- [ ] Migrar los tests y ajustar el Dockerfile para compilar y publicar solo el resultado
+- [x] GitHub Actions: lint, formato, tipos, build, imagen Docker y pruebas con PostgreSQL en cada PR, con `main` protegida
+- [x] Configurar TypeScript (`tsconfig.json`, build y `npm run dev` con `tsx`) y ESLint con `typescript-eslint`
+- [x] Migrar por capas, de abajo hacia arriba: `utils` y `config` → `repositories` → `services` → `controllers` y `routes`
+- [x] Tipar las entidades (`Autor`, `Libro`, `Usuario`, `Prestamo`), los roles y los resultados de las consultas de `pg`
+- [x] Tipar `req.user` (id y rol) para que el RBAC no dependa de `any`
+- [x] Dockerfile en dos etapas: compila y publica solo el resultado
+- [x] Validación con Zod, con los tipos inferidos de los esquemas
+- [x] Migrar los tests y los scripts de `db/` a TypeScript
 
 ### Después
 
