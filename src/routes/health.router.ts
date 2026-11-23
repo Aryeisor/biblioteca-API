@@ -5,13 +5,16 @@ import { estaApagando } from '../config/estado.js';
 const router = Router();
 
 // Liveness: si responde, el proceso está vivo. No toca la base a propósito.
-router.get('/', (req, res) => res.json({ status: 'ok' }));
+router.get('/', (_req, res) => {
+    res.json({ status: 'ok' });
+});
 
 // Readiness: ¿puede atender peticiones ahora? (no se está apagando y la base responde)
 router.get('/ready', async (req, res) => {
-    // server.js lo pone en true al recibir SIGTERM/SIGINT: el balanceador deja de enviar tráfico
+    // server.ts lo pone en true al recibir SIGTERM/SIGINT: el balanceador deja de enviar tráfico
     if (estaApagando()) {
-        return res.status(503).json({ code: 'APAGANDO', message: 'El servidor se está apagando' });
+        res.status(503).json({ code: 'APAGANDO', message: 'El servidor se está apagando' });
+        return;
     }
     try {
         await pool.query('SELECT 1');

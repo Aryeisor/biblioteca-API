@@ -2,10 +2,10 @@
   "name": "biblioteca-api",
   "version": "1.0.0",
   "description": "API REST de biblioteca con Express y PostgreSQL",
-  "main": "src/server.js",
+  "main": "dist/server.js",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.js | pino-pretty",
+    "dev": "tsx watch src/server.ts | pino-pretty",
     "start": "node dist/server.js",
     "db:init": "tsx db/init.js",
     "db:init:test": "node db/init-test.js",

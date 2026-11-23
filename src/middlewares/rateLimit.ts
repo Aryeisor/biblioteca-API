@@ -1,12 +1,22 @@
+import type { Request, RequestHandler } from 'express';
 import { AppError } from '../utils/AppError.js';
 
+type Registro = { cuenta: number; reiniciaEn: number };
+
+type OpcionesRateLimit = {
+    ventanaMs: number;
+    max: number;
+    clave: (req: Request) => string; // ej.: req.ip, o el email del body
+    code: string;
+};
+
 // Todos los Map de todos los limitadores, para poder vaciarlos en los tests
-const todosLosRegistros = new Set();
-export const reiniciarLimites = () => todosLosRegistros.forEach((m) => m.clear());
+const todosLosRegistros = new Set<Map<string, Registro>>();
+export const reiniciarLimites = (): void => todosLosRegistros.forEach((m) => m.clear());
 
 // shortcut: Map en memoria de un solo proceso; con varias instancias pasar a Redis
-export const rateLimit = ({ ventanaMs, max, clave, code }) => {
-    const registros = new Map(); // clave → { cuenta, reiniciaEn }
+export const rateLimit = ({ ventanaMs, max, clave, code }: OpcionesRateLimit): RequestHandler => {
+    const registros = new Map<string, Registro>(); // clave → { cuenta, reiniciaEn }
     todosLosRegistros.add(registros);
 
     const limpieza = setInterval(() => {
@@ -18,7 +28,7 @@ export const rateLimit = ({ ventanaMs, max, clave, code }) => {
     limpieza.unref();
 
     return (req, res, next) => {
-        const k = clave(req); // ej.: req.ip, o el email del body
+        const k = clave(req);
         const ahora = Date.now();
         let registro = registros.get(k);
         if (!registro || ahora >= registro.reiniciaEn) {

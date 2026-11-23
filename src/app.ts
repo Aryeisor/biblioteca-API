@@ -1,7 +1,8 @@
-import express from 'express';
+import { randomUUID } from 'node:crypto';
+import express, { type Request } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
-import pinoHttp from 'pino-http';
+import { pinoHttp } from 'pino-http';
 import { logger } from './config/logger.js';
 import autoresRoutes from './routes/autores.router.js';
 import librosRoutes from './routes/libros.router.js';
@@ -25,14 +26,19 @@ app.use(
         logger,
         // Docker consulta /health cada 10 s: sin esto serían ~8.640 líneas al día que no dicen nada.
         // Solo se omite la línea automática; los errores de /health/ready se siguen registrando con req.log
-        autoLogging: { ignore: (req) => /^\/health(\/|\?|$)/.test(req.originalUrl ?? req.url) },
+        autoLogging: {
+            // pino-http tipa req como IncomingMessage, que no tiene originalUrl (lo agrega Express).
+            // Se usa originalUrl y no url porque Express recorta url al entrar a un router montado.
+            ignore: (req) =>
+                /^\/health(\/|\?|$)/.test((req as Request).originalUrl ?? req.url ?? ''),
+        },
         genReqId: (req, res) => {
             const entrante = req.headers['x-request-id'];
             // typeof primero: test(undefined) convierte a "undefined" y pasaría la regex
             const id =
                 typeof entrante === 'string' && REQUEST_ID_VALIDO.test(entrante)
                     ? entrante
-                    : crypto.randomUUID();
+                    : randomUUID();
             res.setHeader('X-Request-Id', id);
             return id;
         },
@@ -49,9 +55,9 @@ app.use('/prestamos', prestamosRoutes);
 app.use('/auth', authRoutes);
 app.use('/health', healthRoutes);
 
-app.use((req, res) =>
-    res.status(404).json({ code: 'RUTA_NO_ENCONTRADA', message: 'Ruta no encontrada' }),
-);
+app.use((_req, res) => {
+    res.status(404).json({ code: 'RUTA_NO_ENCONTRADA', message: 'Ruta no encontrada' });
+});
 app.use(errorHandler);
 
 export default app;
