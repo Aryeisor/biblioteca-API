@@ -21,7 +21,7 @@ const server = app.listen(PORT, () => {
     logger.info(`escuchando en el puerto ${PORT}`);
 });
 
-const apagar = (señal) => {
+const apagar = (señal: string): void => {
     // Una segunda señal (ej. Ctrl+C dos veces) no repite el apagado
     if (estaApagando()) return;
 

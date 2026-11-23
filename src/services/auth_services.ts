@@ -57,9 +57,12 @@ export const login = async (email: unknown, password: unknown) => {
         throw new AppError(401, 'Credenciales invalidas');
     }
 
-    const token = jwt.sign({ sub: buscarUsuario.id, rol: buscarUsuario.rol }, config.jwtSecret, {
-        expiresIn: config.jwtExpiresIn,
-    });
+    // sub debe ser texto (RFC 7519) y así lo declaran los tipos de jsonwebtoken: se firma como string
+    const token = jwt.sign(
+        { sub: String(buscarUsuario.id), rol: buscarUsuario.rol },
+        config.jwtSecret,
+        { expiresIn: config.jwtExpiresIn },
+    );
 
     return { token };
 };
