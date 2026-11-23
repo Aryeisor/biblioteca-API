@@ -12,14 +12,7 @@ export const buscarPorId = async (req: Request, res: Response): Promise<void> =>
 };
 
 export const actualizar = async (req: Request, res: Response): Promise<void> => {
-    res.json(
-        await service.actualizar(
-            req.params.id,
-            req.body?.nombre,
-            req.body?.email,
-            usuarioActual(req),
-        ),
-    );
+    res.json(await service.actualizar(req.params.id, req.body, usuarioActual(req)));
 };
 
 export const eliminar = async (req: Request, res: Response): Promise<void> => {
@@ -28,5 +21,5 @@ export const eliminar = async (req: Request, res: Response): Promise<void> => {
 };
 
 export const cambiarRol = async (req: Request, res: Response): Promise<void> => {
-    res.json(await service.cambiarRol(req.params.id, req.body?.rol, usuarioActual(req)));
+    res.json(await service.cambiarRol(req.params.id, req.body, usuarioActual(req)));
 };

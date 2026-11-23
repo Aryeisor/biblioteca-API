@@ -1,5 +1,6 @@
 import { AppError } from '../utils/AppError.js';
-import { validarId, validarEntero } from '../utils/validators.js';
+import { validarId, parsear } from '../schemas/comunes.js';
+import { esquemaCursor, esquemaLimitePrestamos } from '../schemas/prestamos.js';
 import pool from '../config/db.js';
 import * as librosrepo from '../repositories/libros_repositories.js';
 import * as usuariosrepo from '../repositories/usuarios_repositories.js';
@@ -48,9 +49,9 @@ const decodificarCursor = (cursor: unknown): number | null => {
     if (cursor === undefined) return null;
     try {
         if (typeof cursor !== 'string') throw new Error('el cursor no es texto');
-        // JSON.parse devuelve any: se declara unknown el id y validarId lo comprueba
-        const { id }: { id?: unknown } = JSON.parse(Buffer.from(cursor, 'base64url').toString());
-        return validarId(id);
+        // JSON.parse devuelve any: el esquema comprueba que sea {id: entero >= 1}
+        const { id } = esquemaCursor.parse(JSON.parse(Buffer.from(cursor, 'base64url').toString()));
+        return id;
     } catch {
         // cualquier fallo (no es Base64, no es JSON, id no válido) es el mismo error para el cliente
         throw new AppError(400, 'Cursor inválido', 'CURSOR_INVALIDO');
@@ -63,7 +64,7 @@ export const listar = async (
     { activos, cursor, limite }: FiltroPrestamos = {},
     user: UsuarioAutenticado,
 ) => {
-    const limiteNum = validarEntero(limite, 'limite', 1, 100, 20);
+    const limiteNum = parsear(esquemaLimitePrestamos, limite);
     const cursorId = decodificarCursor(cursor);
 
     const filas = await repo.listar(

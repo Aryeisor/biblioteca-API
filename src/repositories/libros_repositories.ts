@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg';
 import pool from '../config/db.js';
-import type { DatosLibro, FilaConTotal, Id, Libro, LibroBloqueado } from '../types/dominio.js';
+import type { FilaConTotal, Id, Libro, LibroBloqueado } from '../types/dominio.js';
+import type { DatosLibro } from '../schemas/libros.js';
 import { primeraFila } from '../utils/filas.js';
 
 const SELECT_BASE = `
