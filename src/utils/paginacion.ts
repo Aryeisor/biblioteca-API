@@ -1,4 +1,4 @@
-import { validarEntero } from './validators.js';
+import { esquemaPagina, parsear } from '../schemas/comunes.js';
 
 // COUNT(*) OVER() es un bigint y pg devuelve los bigint como string: por eso string | number.
 interface ConTotal {
@@ -29,8 +29,8 @@ export const paginarOffset = async <T extends ConTotal>(
     { pagina, limite }: ParametrosPagina,
     consultar: (limite: number, offset: number) => Promise<T[]>,
 ): Promise<Paginado<Omit<T, 'total'>>> => {
-    const paginaNum = validarEntero(pagina, 'pagina', 1, Number.MAX_SAFE_INTEGER, 1);
-    const limiteNum = validarEntero(limite, 'limite', 1, 100, 20); // 400 en vez de recortar: el cliente se entera del error
+    // El esquema valida, convierte a número y aplica los valores por defecto (pagina 1, limite 20)
+    const { pagina: paginaNum, limite: limiteNum } = parsear(esquemaPagina, { pagina, limite });
     const offset = (paginaNum - 1) * limiteNum;
 
     const filas = await consultar(limiteNum, offset);

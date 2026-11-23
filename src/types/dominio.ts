@@ -34,8 +34,8 @@ export type Libro = {
     autor: string; // nombre del autor (JOIN)
 };
 export type LibroBloqueado = { id: number; stock: number };
-// Lo que el servicio ya validó y entrega al repositorio (camelCase: aún no es una fila)
-export type DatosLibro = { titulo: string; isbn: string | null; autorId: number; stock: number };
+// DatosLibro (lo que el servicio ya validó y entrega al repositorio) ahora sale del esquema:
+// ver src/schemas/libros.ts
 
 // Usuario público: nunca incluye password
 export type Usuario = { id: number; nombre: string; email: string; created_at: Date };
