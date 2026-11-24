@@ -25,8 +25,8 @@ export const login = async (datos: unknown) => {
     // 3. buscar el usuario por email
     const buscarUsuario = await repo.buscarPorEmail(email);
 
-    // 4. si no existe, o no tiene password (usuarios viejos) -> 401 "Credenciales inválidas"
-    if (!buscarUsuario?.password) {
+    // 4. si no existe -> 401 "Credenciales inválidas" (password es NOT NULL: todo usuario tiene hash)
+    if (!buscarUsuario) {
         // comparar igual contra un hash ficticio: así este camino tarda lo mismo que una contraseña incorrecta
         await bcrypt.compare(password, HASH_FICTICIO);
         throw new AppError(401, 'Credenciales invalidas');

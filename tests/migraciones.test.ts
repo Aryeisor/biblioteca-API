@@ -10,6 +10,7 @@ import {
     marcarComoAplicadas,
     estadoMigraciones,
     DIRECTORIO_MIGRACIONES,
+    cargarMigraciones,
 } from '../src/migraciones/ejecutor.js';
 import { cerrarPool } from './helpers.js'; // también trae la protección: DB_NAME debe terminar en _test
 
@@ -60,8 +61,11 @@ describe('Migraciones', () => {
     it('construye una base vacía solo con migraciones y las registra en orden', async () => {
         const aplicadas = await aplicarMigraciones(client);
 
-        assert.deepEqual(aplicadas, ['000', '001', '002', '003']);
-        assert.deepEqual(await versionesRegistradas(), ['000', '001', '002', '003']);
+        // las versiones esperadas salen de los archivos: agregar una migración no rompe este test
+        const versiones = (await cargarMigraciones(DIRECTORIO_MIGRACIONES)).map((x) => x.version);
+        assert.ok(versiones.length >= 4);
+        assert.deepEqual(aplicadas, versiones);
+        assert.deepEqual(await versionesRegistradas(), versiones);
         for (const tabla of ['autores', 'libros', 'usuarios', 'prestamos']) {
             assert.equal(await existe(tabla), true, `falta la tabla ${tabla}`);
         }
@@ -79,7 +83,8 @@ describe('Migraciones', () => {
     it('una segunda ejecución no aplica nada', async () => {
         await aplicarMigraciones(client);
         assert.deepEqual(await aplicarMigraciones(client), []);
-        assert.equal((await versionesRegistradas()).length, 4);
+        const total = (await cargarMigraciones(DIRECTORIO_MIGRACIONES)).length;
+        assert.equal((await versionesRegistradas()).length, total);
     });
 
     it('rechaza una migración modificada después de aplicarse', async () => {
@@ -145,9 +150,11 @@ describe('Migraciones', () => {
         // una base "vieja": tiene las tablas pero nunca tuvo registro
         await client.query('CREATE TABLE usuarios (id INT)');
 
-        const marcadas = await marcarComoAplicadas(client, '003');
+        const versiones = (await cargarMigraciones(DIRECTORIO_MIGRACIONES)).map((x) => x.version);
+        const ultima = versiones[versiones.length - 1]!;
+        const marcadas = await marcarComoAplicadas(client, ultima);
 
-        assert.deepEqual(marcadas, ['000', '001', '002', '003']);
+        assert.deepEqual(marcadas, versiones);
         assert.deepEqual(await aplicarMigraciones(client), []); // ya no hay nada pendiente
         assert.equal(await existe('autores'), false); // y no se ejecutó ninguna: no se crearon tablas
     });
