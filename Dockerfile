@@ -20,7 +20,8 @@ COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=build /app/dist ./dist
-COPY db/ ./db/
+# Solo las migraciones: las usa el servicio "migrar" (node dist/migraciones/cli.js)
+COPY db/migrations ./db/migrations
 
 USER node
 
