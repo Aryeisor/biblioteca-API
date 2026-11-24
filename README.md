@@ -87,13 +87,13 @@ Node.js 22 · TypeScript (strict) · Express 5 · PostgreSQL 17 · ES Modules
    CREATE DATABASE biblioteca;
    ```
 
-5. Crear las tablas (ejecuta `db/schema.sql`):
+5. Crear las tablas (aplica las migraciones de `db/migrations/`):
 
    ```bash
-   npm run db:init
+   npm run db:migrar
    ```
 
-   Basta con ejecutarlo una vez. Si se vuelve a correr no falla: el schema usa `CREATE TABLE IF NOT EXISTS` y `CREATE INDEX IF NOT EXISTS`, así que las tablas e índices que ya existen se omiten y los datos no se tocan. Ojo: por eso mismo, si cambias la definición de una tabla en `schema.sql`, volver a correr el script no la actualiza.
+   Se puede ejecutar las veces que quieras: solo aplica las migraciones que faltan y anota cada una en la tabla `schema_migrations`. `npm run db:estado` muestra cuáles están aplicadas y cuáles pendientes. Si tu base ya tenía las tablas (se creó antes de existir el registro), ejecuta una vez `npm run db:migrar -- baseline 003` para anotar como aplicadas las migraciones existentes sin volver a ejecutarlas.
 
 ## Uso
 
@@ -129,7 +129,7 @@ Requisito: [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 
    La API también tiene su healthcheck: cada 10 s consulta `GET /health` con `wget`, y `docker compose ps` la muestra como `(healthy)`. Usa `/health` y no `/health/ready` a propósito: si la base se cae, reiniciar la API no lo arregla. Ver [Health checks](#health-checks--health).
 
-- **El esquema se carga solo la primera vez.** `db/schema.sql` se ejecuta automáticamente al crear el volumen de datos (`pgdata`). Si después cambias `schema.sql`, no se vuelve a aplicar: hay que borrar el volumen con `docker compose down -v` (se pierden los datos).
+- **Las migraciones se aplican solas en cada arranque.** El servicio `migrar` ejecuta las migraciones pendientes y termina; la API no arranca hasta que termina bien. Si ya tenías un volumen creado con la versión anterior (sin registro de migraciones), o borras los datos con `docker compose down -v`, o anotas el estado actual con `docker compose run --rm migrar node dist/migraciones/cli.js baseline 003`.
 - **La base del contenedor es independiente de tu PostgreSQL local.** Tienen datos distintos aunque se llamen igual. Compose fija `DB_HOST=db` (el nombre del servicio) y `DB_PORT=5432`, así que los valores de `DB_HOST` y `DB_PORT` de tu `.env` solo se usan al correr la API sin Docker.
 
 | Comando                      | Qué hace                                                                      |
@@ -178,7 +178,7 @@ Los tests usan el test runner nativo de Node (`node:test` con `node:assert/stric
    npm run db:init:test
    ```
 
-   Crea `biblioteca_test` si no existe y aplica `db/schema.sql`. Ojo: cada vez que se ejecuta **borra y recrea el esquema** de la base de prueba (así siempre refleja `schema.sql`), por lo que se pierden sus datos.
+   Crea `biblioteca_test` si no existe y aplica las migraciones. Ojo: cada vez que se ejecuta **borra y recrea el esquema** de la base de prueba (así siempre refleja las migraciones), por lo que se pierden sus datos.
 
 3. Ejecutar los tests:
 
@@ -531,18 +531,21 @@ Internamente, los services lanzan `AppError(status, message, code)` ([src/utils/
 | `usuarios`  | Usuarios de la biblioteca, con email único, columna `password` (hash bcrypt, nunca se devuelve) y `rol` (`lector`, `bibliotecario` o `admin`) |
 | `prestamos` | Préstamos de libros a usuarios; `fecha_devolucion` vacía = no devuelto                                                                        |
 
-El esquema completo está en [db/schema.sql](db/schema.sql), que ya incluye la columna `password`, la columna `rol`, el índice compuesto `(usuario_id, id)` de préstamos y el índice único parcial que impide dos préstamos activos del mismo libro por usuario. `npm run db:init` sobre una base vacía deja todo listo.
+El esquema se construye **solo con migraciones** ([db/migrations/](db/migrations/)): `000` es el esquema inicial y cada archivo posterior es un cambio (`001` rol, `002` índice compuesto `(usuario_id, id)` de préstamos, `003` índice único parcial que impide dos préstamos activos del mismo libro por usuario). No hay un `schema.sql` aparte que pueda quedar desactualizado.
 
-`db/migrations/` guarda los cambios aplicados a bases que ya existían (`001` rol, `002` índice compuesto, `003` préstamo activo único). Son el historial: en una base nueva no hace falta ejecutarlos, porque `schema.sql` ya los incluye.
+Cómo funciona el ejecutor ([src/migraciones/](src/migraciones/)):
+
+- Aplica en orden los archivos que faltan, cada uno dentro de una transacción junto con su registro en `schema_migrations`: o se aplica completo o no queda rastro.
+- Guarda una huella (SHA-256) de cada archivo. Si una migración ya aplicada se edita, se niega a continuar: el cambio va en una migración **nueva**.
+- Un bloqueo de PostgreSQL (`pg_advisory_lock`) evita que dos ejecuciones corran a la vez.
+- Para crear una migración nueva, agrega `db/migrations/004_descripcion.sql` con un número mayor al último. Si necesita `CREATE INDEX CONCURRENTLY` (no admite transacción), empieza el archivo con la línea `-- migrar:sin-transaccion`.
 
 ## Estructura del proyecto
 
 ```
 db/
-  schema.sql          # tablas e índices (ya incluye todo lo de migrations/)
-  init.ts             # script que ejecuta schema.sql
   init-test.ts        # crea la base de prueba (DB_NAME de .env.test) y recrea sus tablas
-  migrations/         # historial para bases ya existentes (001 rol, 002 índice, 003 préstamo único)
+  migrations/         # el esquema, versionado: 000 inicial, 001 rol, 002 índice, 003 préstamo único
   scripts/            # seed-rendimiento.sql: datos de prueba para medir consultas
 docs/
   rbac-matriz-permisos.md  # matriz de permisos por rol y las decisiones detrás
@@ -560,6 +563,7 @@ src/
     auth_controller.ts, autores_controller.ts, libros_controller.ts, prestamos_controller.ts, usuarios_controller.ts
   services/           # reglas de negocio; validan la entrada con los esquemas
     auth_services.ts, autores_services.ts, libros_services.ts, prestamos_services.ts, usuarios_services.ts
+  migraciones/        # ejecutor de migraciones: ejecutor.ts (lógica) y cli.ts (npm run db:migrar)
   schemas/            # esquemas de Zod: validan la entrada y de ellos salen los tipos (z.infer)
     comunes.ts        # parsear(), validarId, paginación y texto obligatorio
     autores.ts, libros.ts, prestamos.ts, usuarios.ts

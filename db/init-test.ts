@@ -1,6 +1,6 @@
 // Crea la base de prueba (DB_NAME de .env.test) y sus tablas. Uso: npm run db:init:test
-import { readFile } from 'node:fs/promises';
 import pg from 'pg';
+import { aplicarMigraciones } from '../src/migraciones/ejecutor.js';
 
 process.loadEnvFile('.env.test');
 
@@ -49,14 +49,14 @@ try {
 }
 
 if (!process.exitCode) {
-    const schema = await readFile(new URL('./schema.sql', import.meta.url), 'utf8');
     const test = conexion(DB_NAME);
     try {
         await test.connect();
-        // Recrea el esquema para que la base de prueba refleje siempre schema.sql (protegido por el chequeo _test)
+        // Recrea el esquema (protegido por el chequeo _test) y lo construye SOLO con migraciones:
+        // así cada ejecución de los tests (y de CI) prueba también que las migraciones funcionan.
         await test.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
-        await test.query(schema);
-        console.log('Tablas creadas');
+        const aplicadas = await aplicarMigraciones(test, undefined, console.log);
+        console.log(`Tablas creadas (${aplicadas.length} migraciones)`);
     } catch (error) {
         console.error('error al crear las tablas:', error instanceof Error ? error.message : error);
         process.exitCode = 1;

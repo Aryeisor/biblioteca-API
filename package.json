@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts | pino-pretty",
     "start": "node dist/server.js",
-    "db:init": "tsx db/init.ts",
+    "db:migrar": "tsx src/migraciones/cli.ts",
+    "db:estado": "tsx src/migraciones/cli.ts estado",
     "db:init:test": "tsx db/init-test.ts",
     "test": "node --env-file=.env.test --import tsx --test --test-concurrency=1 \"tests/**/*.test.ts\"",
     "lint": "eslint .",

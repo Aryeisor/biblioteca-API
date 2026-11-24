@@ -7,8 +7,6 @@ services:
       POSTGRES_DB: ${DB_NAME}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # solo se ejecuta la primera vez, cuando el volumen está vacío
-      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
       # $$ evita que compose interpole; lo resuelve el shell del contenedor
       test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
@@ -16,6 +14,22 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+
+  # Trabajo de una sola vez: aplica las migraciones pendientes y termina. La API no arranca hasta
+  # que termina bien (service_completed_successfully), así nunca corre con un esquema desactualizado.
+  migrar:
+    build: .
+    command: ['node', 'dist/migraciones/cli.js']
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: 'no'
 
   api:
     build: .
@@ -45,6 +59,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrar:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:

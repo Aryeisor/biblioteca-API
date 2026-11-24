@@ -4,8 +4,8 @@
 -- (préstamos activos). Así el historial puede repetir la pareja libro-usuario
 -- todas las veces que quiera, pero activa solo puede haber una.
 --
--- Todo va en una transacción: si el índice falla, la limpieza se deshace.
-BEGIN;
+-- El ejecutor de migraciones (src/migraciones) ya corre cada archivo dentro de una
+-- transacción: si el índice falla, la limpieza se deshace. Por eso no lleva BEGIN/COMMIT.
 
 -- 1) Limpieza: si ya hay datos que violan la regla, el CREATE UNIQUE INDEX
 --    falla con 23505. Se cierran los duplicados dejando activo solo el más
@@ -34,5 +34,3 @@ WHERE l.id = c.libro_id;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_prestamo_activo
   ON prestamos (libro_id, usuario_id)
   WHERE fecha_devolucion IS NULL;
-
-COMMIT;
