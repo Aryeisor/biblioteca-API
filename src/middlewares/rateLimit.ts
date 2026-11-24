@@ -1,45 +1,70 @@
+import { createHash } from 'node:crypto';
 import type { Request, RequestHandler } from 'express';
 import { AppError } from '../utils/AppError.js';
-
-type Registro = { cuenta: number; reiniciaEn: number };
+import { PREFIJO_CLAVES, type AlmacenLimites, type ResultadoLimite } from '../limites/almacen.js';
+import { crearAlmacenMemoria } from '../limites/almacenMemoria.js';
 
 type OpcionesRateLimit = {
     ventanaMs: number;
     max: number;
     clave: (req: Request) => string; // ej.: req.ip, o el email del body
-    code: string;
+    code: string; // identifica al limitador: dos limitadores no comparten contador
 };
 
-// Todos los Map de todos los limitadores, para poder vaciarlos en los tests
-const todosLosRegistros = new Set<Map<string, Registro>>();
-export const reiniciarLimites = (): void => todosLosRegistros.forEach((m) => m.clear());
+// Si el almacén (Redis) tarda más que esto, se trata como caído: un login no puede esperar más.
+const TIEMPO_MAXIMO_ALMACEN_MS = 500;
 
-// shortcut: Map en memoria de un solo proceso; con varias instancias pasar a Redis
+// Por defecto, memoria. server.ts cambia a Redis al arrancar si hay REDIS_URL.
+let almacen: AlmacenLimites = crearAlmacenMemoria();
+
+// Devuelve el almacén anterior para poder restaurarlo (los tests lo usan).
+export const usarAlmacenLimites = (nuevo: AlmacenLimites): AlmacenLimites => {
+    const anterior = almacen;
+    almacen = nuevo;
+    return anterior;
+};
+
+// Vacía los contadores del almacén actual (para los tests)
+export const reiniciarLimites = (): Promise<void> => almacen.reiniciar();
+
+// La clave se convierte en una huella: acota su tamaño (el email viene del body) y evita guardar
+// emails de usuarios en Redis.
+const huella = (valor: string): string => createHash('sha256').update(valor).digest('hex');
+
+const conTope = async <T>(promesa: Promise<T>, ms: number): Promise<T> => {
+    let temporizador: ReturnType<typeof setTimeout> | undefined;
+    const tope = new Promise<never>((_, rechazar) => {
+        temporizador = setTimeout(
+            () => rechazar(new Error(`el almacén no respondió en ${ms} ms`)),
+            ms,
+        );
+    });
+    try {
+        return await Promise.race([promesa, tope]);
+    } finally {
+        clearTimeout(temporizador);
+    }
+};
+
 export const rateLimit = ({ ventanaMs, max, clave, code }: OpcionesRateLimit): RequestHandler => {
-    const registros = new Map<string, Registro>(); // clave → { cuenta, reiniciaEn }
-    todosLosRegistros.add(registros);
+    return async (req, res, next) => {
+        const k = `${PREFIJO_CLAVES}${code}:${huella(clave(req))}`;
 
-    const limpieza = setInterval(() => {
-        const ahora = Date.now();
-        for (const [k, registro] of registros) {
-            if (ahora >= registro.reiniciaEn) registros.delete(k);
-        }
-    }, ventanaMs);
-    limpieza.unref();
-
-    return (req, res, next) => {
-        const k = clave(req);
-        const ahora = Date.now();
-        let registro = registros.get(k);
-        if (!registro || ahora >= registro.reiniciaEn) {
-            registro = { cuenta: 0, reiniciaEn: ahora + ventanaMs };
-            registros.set(k, registro);
+        let resultado: ResultadoLimite | undefined;
+        try {
+            resultado = await conTope(almacen.incrementar(k, ventanaMs), TIEMPO_MAXIMO_ALMACEN_MS);
+        } catch (err) {
+            // Decisión: si el almacén falla, se deja pasar ("fail open"). La alternativa (rechazar todo)
+            // dejaría a TODOS sin poder entrar porque se cayó Redis; la protección contra fuerza bruta
+            // se pierde mientras dure la caída, y por eso queda en el log como error.
+            req.log.error(
+                { err, code },
+                'rate limiting: el almacén falló; se deja pasar la petición',
+            );
         }
 
-        registro.cuenta++;
-
-        if (registro.cuenta > max) {
-            const segundos = Math.ceil((registro.reiniciaEn - ahora) / 1000);
+        if (resultado && resultado.cuenta > max) {
+            const segundos = Math.max(1, Math.ceil(resultado.msRestantes / 1000));
             res.set('Retry-After', String(segundos));
             return next(new AppError(429, 'Demasiadas peticiones, intenta mas tarde', code));
         }

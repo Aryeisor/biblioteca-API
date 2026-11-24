@@ -15,6 +15,21 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Contadores del rate limiting. Son efímeros: sin persistencia (si se reinicia, los contadores
+  # empiezan en 0, igual que antes en memoria). El puerto solo se publica en 127.0.0.1 para poder
+  # correr `npm run dev` o los tests desde tu equipo; no queda expuesto a la red.
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    ports:
+      - '127.0.0.1:6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   # Trabajo de una sola vez: aplica las migraciones pendientes y termina. La API no arranca hasta
   # que termina bien (service_completed_successfully), así nunca corre con un esquema desactualizado.
   migrar:
@@ -47,6 +62,7 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       TRUST_PROXY: ${TRUST_PROXY:-0}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      REDIS_URL: redis://redis:6379
     healthcheck:
       # liveness, no readiness: si la base cae, reiniciar la API no lo arregla
       test: ['CMD', 'wget', '-q', '--spider', 'http://localhost:${PORT:-3000}/health']
@@ -61,6 +77,8 @@ services:
         condition: service_healthy
       migrar:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
