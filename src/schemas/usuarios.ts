@@ -17,12 +17,20 @@ export const esquemaEmail = z
     .max(150, 'El email no puede superar los 150 caracteres')
     .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'El formato del email no es válido');
 
+// bcrypt solo lee los primeros 72 BYTES (no caracteres): una "ñ" ocupa 2 y un emoji 4.
+// Con más bytes ignoraría el final en silencio y dos contraseñas distintas valdrían lo mismo.
+const MAX_BYTES_PASSWORD = 72;
+
 // La contraseña NO se recorta (los espacios cuentan), pero una de solo espacios es "vacía".
+// El mínimo cuenta caracteres; el máximo cuenta bytes.
 export const esquemaPassword = z
     .string('La contraseña es obligatoria')
     .refine((p) => p.trim() !== '', 'La contraseña es obligatoria')
     .min(8, 'Debe contener minimo 8 caracteres')
-    .max(72, 'No puede superar el máximo de 72 caracteres');
+    .refine(
+        (p) => Buffer.byteLength(p, 'utf8') <= MAX_BYTES_PASSWORD,
+        `No puede superar ${MAX_BYTES_PASSWORD} bytes (los acentos y emojis ocupan más de uno)`,
+    );
 
 export const esquemaActualizarUsuario = z.object(
     { nombre: esquemaNombre, email: esquemaEmail },

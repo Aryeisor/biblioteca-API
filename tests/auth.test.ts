@@ -33,6 +33,22 @@ describe('Autenticación', () => {
         assert.equal(res.status, 400);
     });
 
+    it('rechaza una contraseña de menos de 72 caracteres pero más de 72 bytes', async () => {
+        // 40 emojis = 40 caracteres, 160 bytes: bcrypt ignoraría casi todo
+        const res = await api
+            .post('/auth/registrar')
+            .send({ nombre: 'Beto', email: 'bytes@correo.com', password: '😀'.repeat(40) });
+        assert.equal(res.status, 400);
+        assert.match(String(res.body.message), /bytes/);
+    });
+
+    it('acepta una contraseña de exactamente 72 bytes', async () => {
+        const res = await api
+            .post('/auth/registrar')
+            .send({ nombre: 'Beto', email: 'limite@correo.com', password: 'a'.repeat(72) });
+        assert.equal(res.status, 201);
+    });
+
     it('rechaza un email con formato inválido con 400', async () => {
         const res = await api
             .post('/auth/registrar')

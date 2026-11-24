@@ -40,12 +40,12 @@ export type LibroBloqueado = { id: number; stock: number };
 // Usuario público: nunca incluye password
 export type Usuario = { id: number; nombre: string; email: string; created_at: Date };
 export type UsuarioConRol = Usuario & { rol: Rol };
-// Solo para el login: trae el hash. password es null en usuarios antiguos sin contraseña.
+// Solo para el login: trae el hash (la columna es NOT NULL desde la migración 006).
 export type UsuarioConCredenciales = {
     id: number;
     nombre: string;
     email: string;
-    password: string | null;
+    password: string;
     rol: Rol;
 };
 

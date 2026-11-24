@@ -217,7 +217,7 @@ La API usa JWT. Las contraseñas se guardan como hash con bcrypt y nunca se devu
 | POST   | `/auth/registrar` | Registra un usuario               | `{ "nombre": "Ana Pérez", "email": "ana@correo.com", "password": "unaClaveSegura" }` |
 | POST   | `/auth/login`     | Inicia sesión y devuelve un token | `{ "email": "ana@correo.com", "password": "unaClaveSegura" }`                        |
 
-- `POST /auth/registrar` responde `201` con el usuario creado, sin password (`id`, `nombre`, `email`, `created_at`). Reglas: `nombre` y `email` igual que en usuarios; `password` obligatorio, entre 8 y 72 caracteres (72 es el límite de bcrypt); email único (si se repite responde 409).
+- `POST /auth/registrar` responde `201` con el usuario creado, sin password (`id`, `nombre`, `email`, `created_at`). Reglas: `nombre` y `email` igual que en usuarios; `password` obligatorio, mínimo 8 caracteres y máximo 72 **bytes** (límite de bcrypt: una "ñ" ocupa 2 bytes y un emoji 4, así que con emojis el tope real son menos caracteres); email único (si se repite responde 409).
 - `POST /auth/login` responde `200` con `{ "token": "..." }`. Si falta el email o la contraseña responde 400. Si el email no existe o la contraseña no coincide responde `401` con `{ "message": "Credenciales invalidas" }`: es el mismo mensaje en ambos casos a propósito, para no revelar qué emails están registrados. Por la misma razón, ambos casos **tardan lo mismo**: si el email no existe, se ejecuta igual un `bcrypt.compare` contra un hash ficticio (calculado una sola vez al cargar el módulo, con el mismo costo que los hashes reales). Sin esto, la respuesta rápida delataría qué emails no existen.
 
 ### Rate limiting
@@ -531,21 +531,21 @@ Internamente, los services lanzan `AppError(status, message, code)` ([src/utils/
 | `usuarios`  | Usuarios de la biblioteca, con email único, columna `password` (hash bcrypt, nunca se devuelve) y `rol` (`lector`, `bibliotecario` o `admin`) |
 | `prestamos` | Préstamos de libros a usuarios; `fecha_devolucion` vacía = no devuelto                                                                        |
 
-El esquema se construye **solo con migraciones** ([db/migrations/](db/migrations/)): `000` es el esquema inicial y cada archivo posterior es un cambio (`001` rol, `002` índice compuesto `(usuario_id, id)` de préstamos, `003` índice único parcial que impide dos préstamos activos del mismo libro por usuario). No hay un `schema.sql` aparte que pueda quedar desactualizado.
+El esquema se construye **solo con migraciones** ([db/migrations/](db/migrations/)): `000` es el esquema inicial y cada archivo posterior es un cambio (`001` rol, `002` índice compuesto `(usuario_id, id)` de préstamos, `003` índice único parcial que impide dos préstamos activos del mismo libro por usuario, `004` email único sin distinguir mayúsculas, `005` columna `updated_at` mantenida por trigger en autores/libros/usuarios, `006` `password` obligatoria). Las migraciones 004 y 006 fallan con un mensaje claro si tu base ya tiene datos que las incumplen (emails repetidos por mayúsculas o usuarios sin contraseña): arréglalos a mano y vuelve a ejecutar. No hay un `schema.sql` aparte que pueda quedar desactualizado.
 
 Cómo funciona el ejecutor ([src/migraciones/](src/migraciones/)):
 
 - Aplica en orden los archivos que faltan, cada uno dentro de una transacción junto con su registro en `schema_migrations`: o se aplica completo o no queda rastro.
 - Guarda una huella (SHA-256) de cada archivo. Si una migración ya aplicada se edita, se niega a continuar: el cambio va en una migración **nueva**.
 - Un bloqueo de PostgreSQL (`pg_advisory_lock`) evita que dos ejecuciones corran a la vez.
-- Para crear una migración nueva, agrega `db/migrations/004_descripcion.sql` con un número mayor al último. Si necesita `CREATE INDEX CONCURRENTLY` (no admite transacción), empieza el archivo con la línea `-- migrar:sin-transaccion`.
+- Para crear una migración nueva, agrega `db/migrations/007_descripcion.sql` con un número mayor al último. Si necesita `CREATE INDEX CONCURRENTLY` (no admite transacción), empieza el archivo con la línea `-- migrar:sin-transaccion`.
 
 ## Estructura del proyecto
 
 ```
 db/
   init-test.ts        # crea la base de prueba (DB_NAME de .env.test) y recrea sus tablas
-  migrations/         # el esquema, versionado: 000 inicial, 001 rol, 002 índice, 003 préstamo único
+  migrations/         # el esquema, versionado: 000 inicial, 001 rol, 002 índice, 003 préstamo único, 004 email, 005 updated_at, 006 password
   scripts/            # seed-rendimiento.sql: datos de prueba para medir consultas
 docs/
   rbac-matriz-permisos.md  # matriz de permisos por rol y las decisiones detrás
