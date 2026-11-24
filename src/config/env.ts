@@ -84,6 +84,20 @@ const validarLogLevel = (valor = 'info'): NivelLog => {
     return valor;
 };
 
+// REDIS_URL es opcional: sin ella, el rate limiting usa memoria (válido solo con una instancia).
+// El mensaje no incluye el valor: la URL puede llevar la contraseña de Redis.
+const validarRedisUrl = (valor = ''): string | undefined => {
+    if (valor.trim() === '') return undefined;
+    try {
+        const { protocol } = new URL(valor);
+        if (protocol === 'redis:' || protocol === 'rediss:') return valor;
+    } catch {
+        // cae al mensaje de abajo
+    }
+    log.fatal('REDIS_URL invalida (debe ser una URL redis:// o rediss://)');
+    return process.exit(1);
+};
+
 // JWT_EXPIRES_IN: jsonwebtoken solo acepta duraciones como "15m", "1h" o "7d". Antes un valor
 // inválido se descubría en el primer login (500); ahora se detecta al arrancar (fail fast).
 // El tipo Duracion (texto "número + unidad") es el que exige jwt.sign para expiresIn.
@@ -106,6 +120,7 @@ export const config = {
     trustProxy: validarTrustProxy(process.env.TRUST_PROXY),
     corsOrigins: parsearOrigins(process.env.CORS_ORIGINS),
     logLevel: validarLogLevel(process.env.LOG_LEVEL),
+    redisUrl: validarRedisUrl(process.env.REDIS_URL),
     db: {
         host: dbHost,
         port: validarPort(dbPort, 'DB_PORT'),

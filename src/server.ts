@@ -3,6 +3,9 @@ import pool from './config/db.js';
 import { config } from './config/env.js';
 import { logger } from './config/logger.js';
 import { estaApagando, marcarApagando } from './config/estado.js';
+import { conectarRedis, cerrarRedis } from './config/redis.js';
+import { usarAlmacenLimites } from './middlewares/rateLimit.js';
+import { crearAlmacenRedis } from './limites/almacenRedis.js';
 
 const PORT = config.port;
 // Si las peticiones en curso no terminan en este tiempo, se fuerza la salida
@@ -14,6 +17,23 @@ try {
     logger.info('conectado a la base de datos');
 } catch (error) {
     logger.fatal({ err: error }, 'no se pudo conectar a la base de datos');
+    process.exit(1);
+}
+
+// Redis guarda los contadores del rate limiting: así todas las instancias comparten el mismo límite.
+// Sin REDIS_URL se queda el almacén en memoria (solo correcto con una instancia).
+try {
+    const redis = await conectarRedis();
+    if (redis) {
+        usarAlmacenLimites(crearAlmacenRedis(redis));
+        logger.info('rate limiting: contadores en Redis');
+    } else {
+        logger.warn(
+            'REDIS_URL no definida: el rate limiting usa memoria (válido con una sola instancia)',
+        );
+    }
+} catch (error) {
+    logger.fatal({ err: error }, 'no se pudo conectar a Redis');
     process.exit(1);
 }
 
@@ -43,7 +63,8 @@ const apagar = (señal: string): void => {
         }
         logger.info('servidor HTTP cerrado: no quedan peticiones en curso');
 
-        // 3. Cerrar el pool de la base (después del servidor: las últimas peticiones aún lo usan)
+        // 3. Cerrar Redis y el pool de la base (después del servidor: las últimas peticiones aún los usan)
+        await cerrarRedis();
         try {
             await pool.end();
             logger.info('pool de la base de datos cerrado');

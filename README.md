@@ -12,7 +12,7 @@ Node.js 22 · TypeScript (strict) · Express 5 · PostgreSQL 17 · ES Modules
 | Validación    | `zod`: los esquemas de `src/schemas/` validan la entrada y de ellos salen los tipos |
 | Base de datos | `pg` (pool y transacciones), SQL escrito a mano en `src/repositories/`              |
 | Autenticación | `jsonwebtoken` (HS256) · `bcryptjs` · RBAC propio (`authorize`)                     |
-| Seguridad     | `helmet` · `cors` con lista de orígenes · rate limiting propio en memoria           |
+| Seguridad     | `helmet` · `cors` con lista de orígenes · rate limiting propio (Redis o memoria)    |
 | Configuración | `dotenv` + validación propia de variables en `src/config/env.ts`                    |
 | Logs          | `pino` + `pino-http` (`pino-pretty` en desarrollo)                                  |
 | Pruebas       | `node:test` + `node:assert/strict` + `supertest`                                    |
@@ -54,6 +54,9 @@ Node.js 22 · TypeScript (strict) · Express 5 · PostgreSQL 17 · ES Modules
    # Nivel de logs: fatal, error, warn, info (por defecto), debug, trace o silent
    LOG_LEVEL=info
 
+   # Redis para los contadores del rate limiting (opcional; sin ella se usa la memoria del proceso)
+   # REDIS_URL=redis://localhost:6379
+
    DB_HOST=localhost
    DB_PORT=5432
    DB_USER=postgres
@@ -74,12 +77,13 @@ Node.js 22 · TypeScript (strict) · Express 5 · PostgreSQL 17 · ES Modules
 
    Al arrancar, `src/config/env.ts` valida la configuración y la app se detiene con un mensaje claro si algo está mal:
 
-   - Todas las variables de arriba son obligatorias, salvo `TRUST_PROXY`, `CORS_ORIGINS` y `LOG_LEVEL`; si falta alguna, indica cuáles.
+   - Todas las variables de arriba son obligatorias, salvo `TRUST_PROXY`, `CORS_ORIGINS`, `LOG_LEVEL` y `REDIS_URL`; si falta alguna, indica cuáles.
    - `PORT` y `DB_PORT` deben ser enteros entre 1 y 65535.
    - `JWT_SECRET` debe tener al menos 32 caracteres.
    - `TRUST_PROXY` es opcional (por defecto `0`) y debe ser un entero ≥ 0. Ver [IP real detrás de un proxy](#ip-real-detrás-de-un-proxy-trust_proxy).
    - `CORS_ORIGINS` es opcional (por defecto ninguno). Ver [CORS y headers de seguridad](#cors-y-headers-de-seguridad-cors_origins).
    - `LOG_LEVEL` es opcional (por defecto `info`) y debe ser uno de los niveles de arriba. Ver [Logs](#logs-log_level-y-x-request-id).
+   - `REDIS_URL` es opcional y, si se define, debe ser una URL `redis://` o `rediss://`. Ver [Rate limiting](#rate-limiting).
 
 4. Crear la base de datos en PostgreSQL (desde psql o pgAdmin):
 
@@ -113,7 +117,7 @@ La API queda en `http://localhost:3000`.
 
 ## Ejecución con Docker
 
-Levanta la API y un PostgreSQL 17 en contenedores, sin instalar Node ni PostgreSQL en tu equipo.
+Levanta la API, un PostgreSQL 17 y un Redis 7 en contenedores, sin instalar Node ni PostgreSQL en tu equipo.
 
 Requisito: [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 
@@ -130,6 +134,7 @@ Requisito: [Docker Desktop](https://www.docker.com/products/docker-desktop/).
    La API también tiene su healthcheck: cada 10 s consulta `GET /health` con `wget`, y `docker compose ps` la muestra como `(healthy)`. Usa `/health` y no `/health/ready` a propósito: si la base se cae, reiniciar la API no lo arregla. Ver [Health checks](#health-checks--health).
 
 - **Las migraciones se aplican solas en cada arranque.** El servicio `migrar` ejecuta las migraciones pendientes y termina; la API no arranca hasta que termina bien. Si ya tenías un volumen creado con la versión anterior (sin registro de migraciones), o borras los datos con `docker compose down -v`, o anotas el estado actual con `docker compose run --rm migrar node dist/migraciones/cli.js baseline 003`.
+- **Redis guarda los contadores del rate limiting.** Compose lo levanta, le fija `REDIS_URL=redis://redis:6379` a la API y espera a que esté sano antes de arrancarla. No tiene persistencia a propósito: si se reinicia, los contadores empiezan en 0. Su puerto solo se publica en `127.0.0.1:6379` (no en la red) para poder usarlo desde tu equipo: `docker compose up -d redis` basta para correr `npm run dev` o los tests con Redis.
 - **La base del contenedor es independiente de tu PostgreSQL local.** Tienen datos distintos aunque se llamen igual. Compose fija `DB_HOST=db` (el nombre del servicio) y `DB_PORT=5432`, así que los valores de `DB_HOST` y `DB_PORT` de tu `.env` solo se usan al correr la API sin Docker.
 
 | Comando                      | Qué hace                                                                      |
@@ -166,9 +171,10 @@ Los tests usan el test runner nativo de Node (`node:test` con `node:assert/stric
    JWT_EXPIRES_IN=1h
    CORS_ORIGINS=http://localhost:5173
    LOG_LEVEL=silent
+   REDIS_URL=redis://localhost:6379
    ```
 
-   `LOG_LEVEL=silent` evita que los logs llenen la salida de `npm test`.
+   `LOG_LEVEL=silent` evita que los logs llenen la salida de `npm test`. `REDIS_URL` es para los tests del almacén de Redis (`docker compose up -d redis` lo levanta); si no la defines, esos tests se omiten y el resto corre igual, porque la app en los tests siempre usa el almacén en memoria.
 
    Igual que el `.env`, el `.env.test` real no se sube al repositorio.
 
@@ -230,9 +236,16 @@ Las rutas de `/auth` tienen límite de intentos para frenar la fuerza bruta ([sr
 | `POST /auth/login`     | email (sin espacios y en minúsculas) | 5 cada 15 min  | `DEMASIADOS_INTENTOS`   |
 | `POST /auth/registrar` | IP                                   | 10 cada hora   | `DEMASIADOS_REGISTROS`  |
 
-Al superar el límite responde `429` con el header `Retry-After` (segundos que faltan para que se reinicie la ventana). Un proceso periódico borra los contadores vencidos para que la memoria no crezca sin límite.
+Al superar el límite responde `429` con el header `Retry-After` (segundos que faltan para que se reinicie la ventana).
 
-Limitación: los contadores viven en la memoria del proceso. Se pierden al reiniciar la API y no se comparten entre varias instancias (con 3 instancias detrás de un balanceador, el límite real se triplica). Para eso habría que guardarlos en Redis.
+**Dónde se guardan los contadores.** El middleware solo conoce la forma de un almacén (`src/limites/almacen.ts`) y hay dos implementaciones:
+
+- **Redis** (si defines `REDIS_URL`): todas las instancias de la API comparten los mismos contadores, así que el límite es el mismo con 1 o con 10 instancias, y sobreviven a reiniciar la API. Cada petición ejecuta un script Lua que hace `INCR` y `PEXPIRE` de forma atómica: si fueran dos comandos y el proceso muriera entre ellos, la clave quedaría sin expiración y bloquearía a su dueño para siempre.
+- **Memoria** (sin `REDIS_URL`): un `Map` en el proceso. Sirve en desarrollo y con una sola instancia; se pierde al reiniciar y no se comparte (con 3 instancias, el límite real se triplica). La API lo avisa con un `warn` al arrancar.
+
+Las claves se guardan como `rl:<code>:<huella SHA-256>`: la huella acota el tamaño de la clave (el email viene del body) y evita guardar emails en Redis.
+
+**Si Redis falla** (caído, o tarda más de 500 ms) la petición **se deja pasar** y se registra un error en el log ("fail open"). La alternativa, rechazar todo, dejaría a todos los usuarios sin poder entrar porque se cayó un servicio auxiliar. El costo: mientras Redis esté caído no hay protección contra fuerza bruta. Al arrancar, en cambio, si `REDIS_URL` está definida y no se puede conectar, la API no arranca (misma lógica que con la base de datos). El readiness `/health/ready` no depende de Redis a propósito: con "fail open" la API puede atender sin él.
 
 ### CORS y headers de seguridad (`CORS_ORIGINS`)
 
@@ -557,12 +570,15 @@ src/
     db.ts             # conexión (pool) a PostgreSQL
     logger.ts         # logger pino (nivel desde LOG_LEVEL, oculta Authorization y password)
     estado.ts         # estado "apagando": lo cambia server.ts y lo lee /health/ready
+    redis.ts          # cliente de Redis (opcional, solo si hay REDIS_URL)
   routes/             # define las rutas
     auth.router.ts, autores.router.ts, health.router.ts, libros.router.ts, prestamos.router.ts, usuarios.router.ts
   controllers/        # traduce la petición HTTP a llamadas al service
     auth_controller.ts, autores_controller.ts, libros_controller.ts, prestamos_controller.ts, usuarios_controller.ts
   services/           # reglas de negocio; validan la entrada con los esquemas
     auth_services.ts, autores_services.ts, libros_services.ts, prestamos_services.ts, usuarios_services.ts
+  limites/            # almacenes de contadores del rate limiting: memoria y Redis
+    almacen.ts, almacenMemoria.ts, almacenRedis.ts
   migraciones/        # ejecutor de migraciones: ejecutor.ts (lógica) y cli.ts (npm run db:migrar)
   schemas/            # esquemas de Zod: validan la entrada y de ellos salen los tipos (z.infer)
     comunes.ts        # parsear(), validarId, paginación y texto obligatorio
@@ -579,7 +595,7 @@ src/
     paginacion.ts     # paginación por offset compartida por libros y usuarios
     filas.ts          # primeraFila: una fila garantizada de un INSERT ... RETURNING
 tests/                # tests con node:test y Supertest contra la base de prueba
-  helpers.ts, auth.test.ts, autores.test.ts, health.test.ts, libros.test.ts,
+  helpers.ts, almacen-limites.test.ts, auth.test.ts, autores.test.ts, health.test.ts, libros.test.ts,
   prestamos.test.ts, seguridad.test.ts, usuarios.test.ts
 .github/workflows/ci.yml  # integración continua (GitHub Actions)
 tsconfig.json         # TypeScript estricto para revisar tipos (npm run typecheck)
@@ -587,7 +603,7 @@ tsconfig.build.json   # build: compila solo src/ a dist/ (npm run build)
 eslint.config.js      # reglas de ESLint con typescript-eslint (npm run lint)
 .prettierrc           # formato de Prettier (npm run format)
 Dockerfile            # imagen en dos etapas: compila con tsc y publica solo dist/ y las dependencias de producción (usuario no root)
-docker-compose.yml    # servicios api y db (PostgreSQL 17) con volumen de datos
+docker-compose.yml    # servicios api, db (PostgreSQL 17), migrar y redis (Redis 7)
 .dockerignore         # archivos que no entran en la imagen (.env, node_modules, tests...)
 ```
 
@@ -637,7 +653,10 @@ Resumen de todo lo que ya tiene el proyecto, con el enlace a su explicación:
 - [x] Dockerfile en dos etapas: compila y publica solo el resultado
 - [x] Validación con Zod, con los tipos inferidos de los esquemas
 - [x] Migrar los tests y los scripts de `db/` a TypeScript
+- [x] Guardar los contadores del rate limiting en Redis (para varias instancias)
 
 ### Después
 
-- [ ] Guardar los contadores del rate limiting en Redis (para varias instancias)
+- [ ] Access token corto + refresh token con rotación y cookie `httpOnly`
+- [ ] Tabla de auditoría (`audit_log`)
+- [ ] Evaluar un ORM (Drizzle o Prisma) frente al SQL a mano
