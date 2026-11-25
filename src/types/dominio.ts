@@ -40,13 +40,24 @@ export type LibroBloqueado = { id: number; stock: number };
 // Usuario público: nunca incluye password
 export type Usuario = { id: number; nombre: string; email: string; created_at: Date };
 export type UsuarioConRol = Usuario & { rol: Rol };
-// Solo para el login: trae el hash (la columna es NOT NULL desde la migración 006).
+// Solo para el login: trae el hash. password es null en usuarios antiguos sin contraseña.
 export type UsuarioConCredenciales = {
     id: number;
     nombre: string;
     email: string;
-    password: string;
+    password: string | null;
     rol: Rol;
+};
+
+// Lo que lee la rotación de refresh tokens. Las fechas ya vienen comparadas por la base (booleanos).
+export type FilaRefreshToken = {
+    id: number;
+    usuario_id: number;
+    familia_id: string;
+    vencido: boolean;
+    revocado: boolean;
+    usado: boolean;
+    en_gracia: boolean; // se usó hace muy poco: probablemente una carrera legítima, no un robo
 };
 
 export type Prestamo = {

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import auth from '../middlewares/auth.js';
 import { rateLimit } from '../middlewares/rateLimit.js';
 import * as ctrl from '../controllers/auth_controller.js';
 
@@ -27,8 +28,18 @@ const limiteRegistroPorIp = rateLimit({
     clave: (req) => req.ip ?? 'ip-desconocida',
     code: 'DEMASIADOS_REGISTROS',
 });
+// El refresh lo llama el frontend solo, cada vez que vence el access token: límite holgado
+const limiteRefreshPorIp = rateLimit({
+    ventanaMs: 15 * 60 * 1000,
+    max: 60,
+    clave: (req) => req.ip ?? 'ip-desconocida',
+    code: 'DEMASIADOS_REFRESCOS',
+});
 
 router.post('/login', limitePorIp, limitePorEmail, ctrl.login);
 router.post('/registrar', limiteRegistroPorIp, ctrl.registrar);
+router.post('/refresh', limiteRefreshPorIp, ctrl.refrescar);
+router.post('/logout', ctrl.logout);
+router.post('/logout-todo', auth, ctrl.logoutTodo);
 
 export default router;
