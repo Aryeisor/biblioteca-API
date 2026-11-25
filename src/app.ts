@@ -45,7 +45,9 @@ app.use(
     }),
 );
 app.use(helmet());
-app.use(cors({ origin: config.corsOrigins }));
+// credentials: el navegador solo envía la cookie del refresh token si la API lo permite explícitamente.
+// Con credentials no vale '*': por eso CORS_ORIGINS es una lista cerrada de orígenes.
+app.use(cors({ origin: config.corsOrigins, credentials: true }));
 app.use(express.json({ limit: '100kb' }));
 
 app.use('/autores', autoresRoutes);

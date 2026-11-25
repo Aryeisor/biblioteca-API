@@ -64,7 +64,11 @@ Node.js 22 · TypeScript (strict) · Express 5 · PostgreSQL 17 · ES Modules
    DB_NAME=biblioteca
 
    JWT_SECRET=cambia_esto_por_un_secreto_largo_y_aleatorio
-   JWT_EXPIRES_IN=1h
+   # Access token corto: la sesión se renueva sola con el refresh token
+   JWT_EXPIRES_IN=15m
+
+   # Días que dura una sesión sin volver a pedir la contraseña (entero entre 1 y 90)
+   REFRESH_TOKEN_DIAS=7
    ```
 
    Para generar un `JWT_SECRET` seguro:
@@ -77,12 +81,13 @@ Node.js 22 · TypeScript (strict) · Express 5 · PostgreSQL 17 · ES Modules
 
    Al arrancar, `src/config/env.ts` valida la configuración y la app se detiene con un mensaje claro si algo está mal:
 
-   - Todas las variables de arriba son obligatorias, salvo `TRUST_PROXY`, `CORS_ORIGINS`, `LOG_LEVEL` y `REDIS_URL`; si falta alguna, indica cuáles.
+   - Todas las variables de arriba son obligatorias, salvo `TRUST_PROXY`, `CORS_ORIGINS`, `LOG_LEVEL`, `REDIS_URL` y `REFRESH_TOKEN_DIAS`; si falta alguna, indica cuáles.
    - `PORT` y `DB_PORT` deben ser enteros entre 1 y 65535.
    - `JWT_SECRET` debe tener al menos 32 caracteres.
    - `TRUST_PROXY` es opcional (por defecto `0`) y debe ser un entero ≥ 0. Ver [IP real detrás de un proxy](#ip-real-detrás-de-un-proxy-trust_proxy).
    - `CORS_ORIGINS` es opcional (por defecto ninguno). Ver [CORS y headers de seguridad](#cors-y-headers-de-seguridad-cors_origins).
    - `LOG_LEVEL` es opcional (por defecto `info`) y debe ser uno de los niveles de arriba. Ver [Logs](#logs-log_level-y-x-request-id).
+   - `REFRESH_TOKEN_DIAS` es opcional (por defecto `7`) y debe ser un entero entre 1 y 90. Ver [Sesiones](#sesiones-access-token-y-refresh-token).
    - `REDIS_URL` es opcional y, si se define, debe ser una URL `redis://` o `rediss://`. Ver [Rate limiting](#rate-limiting).
 
 4. Crear la base de datos en PostgreSQL (desde psql o pgAdmin):
@@ -121,7 +126,7 @@ Levanta la API, un PostgreSQL 17 y un Redis 7 en contenedores, sin instalar Node
 
 Requisito: [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 
-1. Copiar `.env.example` a `.env` y completar los datos (el mismo archivo de la [instalación](#instalación)). Compose usa `DB_USER`, `DB_PASSWORD` y `DB_NAME` para crear la base del contenedor, y `PORT`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `CORS_ORIGINS`, `TRUST_PROXY` y `LOG_LEVEL` para la API (los tres últimos tienen valor por defecto si no están en el `.env`).
+1. Copiar `.env.example` a `.env` y completar los datos (el mismo archivo de la [instalación](#instalación)). Compose usa `DB_USER`, `DB_PASSWORD` y `DB_NAME` para crear la base del contenedor, y `PORT`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `REFRESH_TOKEN_DIAS`, `CORS_ORIGINS`, `TRUST_PROXY` y `LOG_LEVEL` para la API (los tres últimos tienen valor por defecto si no están en el `.env`).
 
 2. Construir y levantar los contenedores:
 
@@ -218,13 +223,16 @@ La API usa JWT. Las contraseñas se guardan como hash con bcrypt y nunca se devu
 
 ### Auth — `/auth`
 
-| Método | Ruta              | Descripción                       | Body                                                                                 |
-| ------ | ----------------- | --------------------------------- | ------------------------------------------------------------------------------------ |
-| POST   | `/auth/registrar` | Registra un usuario               | `{ "nombre": "Ana Pérez", "email": "ana@correo.com", "password": "unaClaveSegura" }` |
-| POST   | `/auth/login`     | Inicia sesión y devuelve un token | `{ "email": "ana@correo.com", "password": "unaClaveSegura" }`                        |
+| Método | Ruta                | Descripción                       | Body                                                                                 |
+| ------ | ------------------- | --------------------------------- | ------------------------------------------------------------------------------------ |
+| POST   | `/auth/registrar`   | Registra un usuario               | `{ "nombre": "Ana Pérez", "email": "ana@correo.com", "password": "unaClaveSegura" }` |
+| POST   | `/auth/login`       | Inicia sesión y devuelve un token | `{ "email": "ana@correo.com", "password": "unaClaveSegura" }`                        |
+| POST   | `/auth/refresh`     | Renueva la sesión (cookie)        | — (usa la cookie `refresh_token`)                                                    |
+| POST   | `/auth/logout`      | Cierra la sesión de este equipo   | — (usa la cookie `refresh_token`)                                                    |
+| POST   | `/auth/logout-todo` | Cierra todas tus sesiones         | — (requiere `Authorization: Bearer <token>`)                                         |
 
 - `POST /auth/registrar` responde `201` con el usuario creado, sin password (`id`, `nombre`, `email`, `created_at`). Reglas: `nombre` y `email` igual que en usuarios; `password` obligatorio, mínimo 8 caracteres y máximo 72 **bytes** (límite de bcrypt: una "ñ" ocupa 2 bytes y un emoji 4, así que con emojis el tope real son menos caracteres); email único (si se repite responde 409).
-- `POST /auth/login` responde `200` con `{ "token": "..." }`. Si falta el email o la contraseña responde 400. Si el email no existe o la contraseña no coincide responde `401` con `{ "message": "Credenciales invalidas" }`: es el mismo mensaje en ambos casos a propósito, para no revelar qué emails están registrados. Por la misma razón, ambos casos **tardan lo mismo**: si el email no existe, se ejecuta igual un `bcrypt.compare` contra un hash ficticio (calculado una sola vez al cargar el módulo, con el mismo costo que los hashes reales). Sin esto, la respuesta rápida delataría qué emails no existen.
+- `POST /auth/login` responde `200` con `{ "token": "..." }` (el access token) y además guarda el refresh token en una cookie `httpOnly` (ver [Sesiones](#sesiones-access-token-y-refresh-token)). Si falta el email o la contraseña responde 400. Si el email no existe o la contraseña no coincide responde `401` con `{ "message": "Credenciales invalidas" }`: es el mismo mensaje en ambos casos a propósito, para no revelar qué emails están registrados. Por la misma razón, ambos casos **tardan lo mismo**: si el email no existe, se ejecuta igual un `bcrypt.compare` contra un hash ficticio (calculado una sola vez al cargar el módulo, con el mismo costo que los hashes reales). Sin esto, la respuesta rápida delataría qué emails no existen.
 
 ### Rate limiting
 
@@ -276,6 +284,29 @@ El límite por IP usa `req.ip`. Detrás de un Nginx o balanceador, todas las pet
 - `1`: detrás de un Nginx o balanceador que tú controlas.
 - Nunca `true`: Express le creería a cualquier `X-Forwarded-For`, incluso al que inventa el cliente, y el límite por IP dejaría de servir.
 
+### Sesiones: access token y refresh token
+
+Un solo token largo es un riesgo: si lo roban, sirve hasta que venza. Por eso hay dos:
+
+|                | Access token                                                                                | Refresh token                                                |
+| -------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Qué es         | JWT firmado con HS256                                                                       | 32 bytes aleatorios, opaco                                   |
+| Dura           | `JWT_EXPIRES_IN` (recomendado `15m`)                                                        | `REFRESH_TOKEN_DIAS` (por defecto 7 días)                    |
+| Dónde viaja    | Header `Authorization: Bearer` (el frontend lo guarda **en memoria**, no en `localStorage`) | Cookie `refresh_token`                                       |
+| Para qué sirve | Llamar a la API                                                                             | Solo para pedir un access token nuevo (`POST /auth/refresh`) |
+
+La cookie es `HttpOnly` (el JavaScript de la página no puede leerla, así que un XSS no se la lleva), `SameSite=Strict` y `Path=/auth` (el navegador solo la envía a `/auth/*` y desde el mismo sitio, lo que frena el CSRF), y `Secure` cuando la petición llega por HTTPS (detrás de un proxy hay que configurar bien [`TRUST_PROXY`](#ip-real-detrás-de-un-proxy-trust_proxy)). Para que el navegador la envíe desde el frontend, `fetch` debe usar `credentials: 'include'` y el origen del frontend debe estar en `CORS_ORIGINS`. Se asume que frontend y API son del mismo _sitio_ (por ejemplo `localhost:5173` y `localhost:3000`, o `app.midominio.com` y `api.midominio.com`); con dominios distintos haría falta `SameSite=None` y una defensa CSRF adicional.
+
+**Rotación.** Cada `POST /auth/refresh` marca el refresh token como usado y entrega uno nuevo (la cookie se reemplaza sola). Los tokens se guardan en la tabla `refresh_tokens` **solo como huella SHA-256**: quien lea la base no puede usarlos. Cada login abre una "familia" de tokens.
+
+**Detección de robo.** Si llega un token que ya fue usado, alguien lo copió (el dueño ya lo cambió por uno nuevo). La API revoca la familia completa y responde `401`; el dueño legítimo también tiene que iniciar sesión otra vez, que es el precio de cortar al ladrón. Excepción: dentro de los 10 segundos siguientes al uso, se responde `409 REFRESH_EN_CURSO` sin revocar nada, porque lo normal es una carrera legítima (dos pestañas renovando a la vez); el cliente debe reintentar.
+
+**Rol al día.** Cada refresh vuelve a leer el rol del usuario en la base, así que un cambio de rol llega como máximo al renovar el access token (≤ `JWT_EXPIRES_IN`), no al cabo de días.
+
+**Cerrar sesión.** `POST /auth/logout` revoca la familia del navegador actual y borra la cookie (responde 204 aunque no hubiera sesión). `POST /auth/logout-todo` (con access token) revoca todas las sesiones del usuario.
+
+Los tokens vencidos de un usuario se borran al iniciar sesión.
+
 ### Cómo usar el token
 
 Envía el token en el header de cada petición protegida:
@@ -286,7 +317,7 @@ Authorization: Bearer <token>
 
 En Insomnia: pestaña **Auth** → **Bearer Token** → pega el token en el campo _Token_.
 
-El token se firma y se verifica solo con el algoritmo `HS256` (se rechaza cualquier token firmado con otro algoritmo). Expira según `JWT_EXPIRES_IN` (por ejemplo `1h`); cuando expira, la API responde 401 con el código `TOKEN_EXPIRADO` y hay que volver a hacer login.
+El token se firma y se verifica solo con el algoritmo `HS256` (se rechaza cualquier token firmado con otro algoritmo). Expira según `JWT_EXPIRES_IN` (por ejemplo `15m`); cuando expira, la API responde 401 con el código `TOKEN_EXPIRADO` y el cliente pide uno nuevo con `POST /auth/refresh` (o vuelve a hacer login si la sesión también venció).
 
 ### Rutas protegidas y roles (RBAC)
 
@@ -306,7 +337,7 @@ Reglas que no dependen solo del rol (las aplica el service, porque dependen del 
 - Un lector solo ve y modifica su propio usuario y sus propios préstamos; un admin puede sobre cualquiera.
 - `POST /prestamos`: el lector siempre presta a su nombre (se ignora el `usuarioId` del body); bibliotecario y admin pueden prestar a nombre de otro.
 - Un admin no puede borrarse ni quitarse el rol a sí mismo (`400`), así el sistema nunca queda sin admins.
-- **Limitación:** el rol viaja en el JWT, así que un cambio de rol surte efecto cuando el usuario vuelve a iniciar sesión o cuando su token vence.
+- **Limitación:** el rol viaja en el JWT, así que un cambio de rol surte efecto cuando el access token se renueva (`POST /auth/refresh`) o el usuario vuelve a iniciar sesión: como máximo `JWT_EXPIRES_IN` después.
 
 La matriz completa, con la justificación de cada decisión, está en [docs/rbac-matriz-permisos.md](docs/rbac-matriz-permisos.md).
 
@@ -531,20 +562,24 @@ Valores de `code`:
 | `DEMASIADAS_PETICIONES` | 429    | Más de 20 logins desde la misma IP en 15 min                                              |
 | `DEMASIADOS_INTENTOS`   | 429    | Más de 5 logins con el mismo email en 15 min                                              |
 | `DEMASIADOS_REGISTROS`  | 429    | Más de 10 registros desde la misma IP en 1 hora                                           |
+| `DEMASIADOS_REFRESCOS`  | 429    | Más de 60 renovaciones de sesión desde la misma IP en 15 min                              |
+| `SESION_INVALIDA`       | 401    | El refresh token falta, no existe, venció, fue revocado o se reutilizó                    |
+| `REFRESH_EN_CURSO`      | 409    | Otra petición acaba de renovar esa misma sesión; reintenta con la cookie nueva            |
 | `ERROR_INTERNO`         | 500    | Error no controlado del servidor (la respuesta trae `requestId`)                          |
 
 Internamente, los services lanzan `AppError(status, message, code)` ([src/utils/AppError.ts](src/utils/AppError.ts)) y el middleware [errorHandler.ts](src/middlewares/errorHandler.ts) lo convierte en la respuesta HTTP.
 
 ## Base de datos
 
-| Tabla       | Descripción                                                                                                                                   |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `autores`   | Autores de los libros                                                                                                                         |
-| `libros`    | Libros con ISBN único y stock; cada uno pertenece a un autor                                                                                  |
-| `usuarios`  | Usuarios de la biblioteca, con email único, columna `password` (hash bcrypt, nunca se devuelve) y `rol` (`lector`, `bibliotecario` o `admin`) |
-| `prestamos` | Préstamos de libros a usuarios; `fecha_devolucion` vacía = no devuelto                                                                        |
+| Tabla            | Descripción                                                                                                                                   |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `autores`        | Autores de los libros                                                                                                                         |
+| `libros`         | Libros con ISBN único y stock; cada uno pertenece a un autor                                                                                  |
+| `usuarios`       | Usuarios de la biblioteca, con email único, columna `password` (hash bcrypt, nunca se devuelve) y `rol` (`lector`, `bibliotecario` o `admin`) |
+| `prestamos`      | Préstamos de libros a usuarios; `fecha_devolucion` vacía = no devuelto                                                                        |
+| `refresh_tokens` | Sesiones: huella SHA-256 del token, familia, vencimiento y marcas de uso/revocación (ver [Sesiones](#sesiones-access-token-y-refresh-token))  |
 
-El esquema se construye **solo con migraciones** ([db/migrations/](db/migrations/)): `000` es el esquema inicial y cada archivo posterior es un cambio (`001` rol, `002` índice compuesto `(usuario_id, id)` de préstamos, `003` índice único parcial que impide dos préstamos activos del mismo libro por usuario, `004` email único sin distinguir mayúsculas, `005` columna `updated_at` mantenida por trigger en autores/libros/usuarios, `006` `password` obligatoria). Las migraciones 004 y 006 fallan con un mensaje claro si tu base ya tiene datos que las incumplen (emails repetidos por mayúsculas o usuarios sin contraseña): arréglalos a mano y vuelve a ejecutar. No hay un `schema.sql` aparte que pueda quedar desactualizado.
+El esquema se construye **solo con migraciones** ([db/migrations/](db/migrations/)): `000` es el esquema inicial y cada archivo posterior es un cambio (`001` rol, `002` índice compuesto `(usuario_id, id)` de préstamos, `003` índice único parcial que impide dos préstamos activos del mismo libro por usuario, `004` email único sin distinguir mayúsculas, `005` columna `updated_at` mantenida por trigger en autores/libros/usuarios, `006` `password` obligatoria, `007` tabla `refresh_tokens`). Las migraciones 004 y 006 fallan con un mensaje claro si tu base ya tiene datos que las incumplen (emails repetidos por mayúsculas o usuarios sin contraseña): arréglalos a mano y vuelve a ejecutar. No hay un `schema.sql` aparte que pueda quedar desactualizado.
 
 Cómo funciona el ejecutor ([src/migraciones/](src/migraciones/)):
 
@@ -594,9 +629,11 @@ src/
     AppError.ts       # error con status HTTP y code
     paginacion.ts     # paginación por offset compartida por libros y usuarios
     filas.ts          # primeraFila: una fila garantizada de un INSERT ... RETURNING
+    transaccion.ts    # enTransaccion: BEGIN/COMMIT/ROLLBACK y liberar la conexión
+    cookies.ts        # leerCookie: lee una cookie del header (sin cookie-parser)
 tests/                # tests con node:test y Supertest contra la base de prueba
   helpers.ts, almacen-limites.test.ts, auth.test.ts, autores.test.ts, health.test.ts, libros.test.ts,
-  prestamos.test.ts, seguridad.test.ts, usuarios.test.ts
+  prestamos.test.ts, seguridad.test.ts, sesiones.test.ts, usuarios.test.ts
 .github/workflows/ci.yml  # integración continua (GitHub Actions)
 tsconfig.json         # TypeScript estricto para revisar tipos (npm run typecheck)
 tsconfig.build.json   # build: compila solo src/ a dist/ (npm run build)
@@ -611,26 +648,26 @@ docker-compose.yml    # servicios api, db (PostgreSQL 17), migrar y redis (Redis
 
 Resumen de todo lo que ya tiene el proyecto, con el enlace a su explicación:
 
-| Área                 | Qué está hecho                                                                                                                                                                           |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Arquitectura         | Capas separadas: router → controller → service → repository; errores con `AppError` y un único `errorHandler`                                                                            |
-| Autenticación        | JWT firmado y verificado solo con HS256, contraseñas con bcrypt, login de tiempo constante ([ver](#autenticación))                                                                       |
-| Autorización (RBAC)  | Roles `lector`, `bibliotecario` y `admin`; `authorize` en cada ruta y reglas de propiedad en los services ([ver](#rutas-protegidas-y-roles-rbac))                                        |
-| Rate limiting        | Límite por IP y por email en `/auth`, con `Retry-After` ([ver](#rate-limiting))                                                                                                          |
-| Headers y CORS       | helmet + lista de orígenes permitidos ([ver](#cors-y-headers-de-seguridad-cors_origins))                                                                                                 |
-| IP real              | `trust proxy` configurable para que el límite por IP funcione detrás de un proxy ([ver](#ip-real-detrás-de-un-proxy-trust_proxy))                                                        |
-| Configuración        | Todas las variables se validan al arrancar; la app no sube con una configuración inválida ([ver](#instalación))                                                                          |
-| Logs                 | pino en JSON, `X-Request-Id` en cada respuesta, `Authorization` y `password` ocultos ([ver](#logs-log_level-y-x-request-id))                                                             |
-| Health y apagado     | `/health` y `/health/ready`, apagado ordenado con SIGTERM/SIGINT ([ver](#health-checks--health))                                                                                         |
-| Paginación           | Por offset en libros y usuarios, por cursor en préstamos ([ver](#paginación-de-get-libros))                                                                                              |
-| Integridad de datos  | Transacciones con `SELECT ... FOR UPDATE` al prestar y devolver, `CHECK` de stock, índice único parcial de préstamo activo                                                               |
-| Rendimiento          | Índices en las llaves foráneas e índice compuesto `(usuario_id, id)` para la paginación por cursor                                                                                       |
-| Pruebas              | `node:test` + Supertest contra una base aparte, incluida una prueba de concurrencia ([ver](#pruebas))                                                                                    |
-| TypeScript           | Modo estricto, entidades y roles tipados, `req.user` tipado, `tsc` en el build y en CI                                                                                                   |
-| Validación           | Esquemas de Zod en `src/schemas/`; los tipos de entrada se infieren del esquema                                                                                                          |
-| Integración continua | GitHub Actions en cada PR (lint, formato, tipos, build, imagen Docker y pruebas con PostgreSQL) y rama `main` protegida                                                                  |
-| Contenedores         | Dockerfile en dos etapas (compila y publica solo `dist/`), sin dependencias de desarrollo y con usuario no root, Compose con PostgreSQL 17 y healthchecks ([ver](#ejecución-con-docker)) |
-| Calidad de código    | ESLint con `typescript-eslint`, Prettier y `npm run typecheck`                                                                                                                           |
+| Área                 | Qué está hecho                                                                                                                                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Arquitectura         | Capas separadas: router → controller → service → repository; errores con `AppError` y un único `errorHandler`                                                                                           |
+| Autenticación        | Access token JWT (HS256) corto + refresh token con rotación y detección de robo en cookie `httpOnly`, contraseñas con bcrypt, login de tiempo constante ([ver](#sesiones-access-token-y-refresh-token)) |
+| Autorización (RBAC)  | Roles `lector`, `bibliotecario` y `admin`; `authorize` en cada ruta y reglas de propiedad en los services ([ver](#rutas-protegidas-y-roles-rbac))                                                       |
+| Rate limiting        | Límite por IP y por email en `/auth`, con `Retry-After` ([ver](#rate-limiting))                                                                                                                         |
+| Headers y CORS       | helmet + lista de orígenes permitidos ([ver](#cors-y-headers-de-seguridad-cors_origins))                                                                                                                |
+| IP real              | `trust proxy` configurable para que el límite por IP funcione detrás de un proxy ([ver](#ip-real-detrás-de-un-proxy-trust_proxy))                                                                       |
+| Configuración        | Todas las variables se validan al arrancar; la app no sube con una configuración inválida ([ver](#instalación))                                                                                         |
+| Logs                 | pino en JSON, `X-Request-Id` en cada respuesta, `Authorization` y `password` ocultos ([ver](#logs-log_level-y-x-request-id))                                                                            |
+| Health y apagado     | `/health` y `/health/ready`, apagado ordenado con SIGTERM/SIGINT ([ver](#health-checks--health))                                                                                                        |
+| Paginación           | Por offset en libros y usuarios, por cursor en préstamos ([ver](#paginación-de-get-libros))                                                                                                             |
+| Integridad de datos  | Transacciones con `SELECT ... FOR UPDATE` al prestar y devolver, `CHECK` de stock, índice único parcial de préstamo activo                                                                              |
+| Rendimiento          | Índices en las llaves foráneas e índice compuesto `(usuario_id, id)` para la paginación por cursor                                                                                                      |
+| Pruebas              | `node:test` + Supertest contra una base aparte, incluida una prueba de concurrencia ([ver](#pruebas))                                                                                                   |
+| TypeScript           | Modo estricto, entidades y roles tipados, `req.user` tipado, `tsc` en el build y en CI                                                                                                                  |
+| Validación           | Esquemas de Zod en `src/schemas/`; los tipos de entrada se infieren del esquema                                                                                                                         |
+| Integración continua | GitHub Actions en cada PR (lint, formato, tipos, build, imagen Docker y pruebas con PostgreSQL) y rama `main` protegida                                                                                 |
+| Contenedores         | Dockerfile en dos etapas (compila y publica solo `dist/`), sin dependencias de desarrollo y con usuario no root, Compose con PostgreSQL 17 y healthchecks ([ver](#ejecución-con-docker))                |
+| Calidad de código    | ESLint con `typescript-eslint`, Prettier y `npm run typecheck`                                                                                                                                          |
 
 ## Próximos pasos
 
@@ -654,9 +691,9 @@ Resumen de todo lo que ya tiene el proyecto, con el enlace a su explicación:
 - [x] Validación con Zod, con los tipos inferidos de los esquemas
 - [x] Migrar los tests y los scripts de `db/` a TypeScript
 - [x] Guardar los contadores del rate limiting en Redis (para varias instancias)
+- [x] Access token corto + refresh token con rotación y cookie `httpOnly`
 
 ### Después
 
-- [ ] Access token corto + refresh token con rotación y cookie `httpOnly`
 - [ ] Tabla de auditoría (`audit_log`)
 - [ ] Evaluar un ORM (Drizzle o Prisma) frente al SQL a mano

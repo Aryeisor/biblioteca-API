@@ -84,6 +84,16 @@ const validarLogLevel = (valor = 'info'): NivelLog => {
     return valor;
 };
 
+// REFRESH_TOKEN_DIAS es opcional: cuánto dura una sesión sin volver a pedir la contraseña
+const validarRefreshDias = (valor = '7'): number => {
+    const n = Number(valor);
+    if (valor.trim() === '' || !Number.isInteger(n) || n < 1 || n > 90) {
+        log.fatal(`REFRESH_TOKEN_DIAS invalido: "${valor}" (debe ser un entero entre 1 y 90)`);
+        process.exit(1);
+    }
+    return n;
+};
+
 // REDIS_URL es opcional: sin ella, el rate limiting usa memoria (válido solo con una instancia).
 // El mensaje no incluye el valor: la URL puede llevar la contraseña de Redis.
 const validarRedisUrl = (valor = ''): string | undefined => {
@@ -116,6 +126,7 @@ const validarDuracion = (valor: string, nombre: string): Duracion => {
 export const config = {
     jwtSecret,
     jwtExpiresIn: validarDuracion(jwtExpiresIn, 'JWT_EXPIRES_IN'),
+    refreshTokenDias: validarRefreshDias(process.env.REFRESH_TOKEN_DIAS),
     port: validarPort(port, 'PORT'),
     trustProxy: validarTrustProxy(process.env.TRUST_PROXY),
     corsOrigins: parsearOrigins(process.env.CORS_ORIGINS),

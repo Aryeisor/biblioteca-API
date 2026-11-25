@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import pool from '../config/db.js';
 import type {
     FilaConTotal,
@@ -73,6 +74,18 @@ export const cambiarRol = async (id: number, rol: Rol): Promise<UsuarioConRol | 
     const { rows } = await pool.query<UsuarioConRol>(
         'UPDATE usuarios SET rol = $1 WHERE id = $2 RETURNING id, nombre, email, rol, created_at',
         [rol, id],
+    );
+    return rows[0];
+};
+
+// El refresh vuelve a leer el rol: un cambio de rol se aplica en el siguiente refresh, no al vencer la sesión
+export const buscarRolPorId = async (
+    client: PoolClient,
+    id: number,
+): Promise<{ id: number; rol: Rol } | undefined> => {
+    const { rows } = await client.query<{ id: number; rol: Rol }>(
+        'SELECT id, rol FROM usuarios WHERE id = $1',
+        [id],
     );
     return rows[0];
 };

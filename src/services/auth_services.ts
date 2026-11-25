@@ -1,7 +1,6 @@
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { config } from '../config/env.js';
 import * as repo from '../repositories/usuarios_repositories.js';
+import { iniciarSesion } from './sesiones_services.js';
 import { AppError } from '../utils/AppError.js';
 import { parsear } from '../schemas/comunes.js';
 import { esquemaRegistro, esquemaLogin } from '../schemas/usuarios.js';
@@ -32,18 +31,16 @@ export const login = async (datos: unknown) => {
         throw new AppError(401, 'Credenciales invalidas');
     }
     // 5. bcrypt.compare(password, usuario.password) -> si es false, 401 "Credenciales inválidas"
-    // Aquí TypeScript ya sabe que buscarUsuario existe y que password es string (no null)
+    if (!buscarUsuario.password) {
+        await bcrypt.compare(password, HASH_FICTICIO);
+        throw new AppError(401, 'Credenciales invalidas');
+    }
     const ok = await bcrypt.compare(password, buscarUsuario.password);
     if (!ok) {
         throw new AppError(401, 'Credenciales invalidas');
     }
 
-    // sub debe ser texto (RFC 7519) y así lo declaran los tipos de jsonwebtoken: se firma como string
-    const token = jwt.sign(
-        { sub: String(buscarUsuario.id), rol: buscarUsuario.rol },
-        config.jwtSecret,
-        { expiresIn: config.jwtExpiresIn },
-    );
-
-    return { token };
+    // access token (corto, va en el body) + refresh token (largo, el controlador lo pone en una cookie)
+    const { accessToken, refreshToken } = await iniciarSesion(buscarUsuario);
+    return { token: accessToken, refreshToken };
 };
