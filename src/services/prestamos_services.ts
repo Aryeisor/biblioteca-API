@@ -1,6 +1,7 @@
 import { AppError } from '../utils/AppError.js';
 import { validarId, parsear } from '../schemas/comunes.js';
-import { esquemaCursor, esquemaLimitePrestamos } from '../schemas/prestamos.js';
+import { esquemaLimitePrestamos } from '../schemas/prestamos.js';
+import { decodificarCursor, paginarPorCursor } from '../utils/cursor.js';
 import pool from '../config/db.js';
 import * as librosrepo from '../repositories/libros_repositories.js';
 import * as usuariosrepo from '../repositories/usuarios_repositories.js';
@@ -40,24 +41,6 @@ export const prestar = async (
     }
 };
 
-// Cursor opaco: el cliente no ve un id sino {"id":N} en Base64url. Si mañana se ordena por fecha,
-// se cambia lo que va dentro sin romper a nadie, porque ningún cliente armaba cursores a mano.
-const codificarCursor = (id: number): string =>
-    Buffer.from(JSON.stringify({ id })).toString('base64url');
-
-const decodificarCursor = (cursor: unknown): number | null => {
-    if (cursor === undefined) return null;
-    try {
-        if (typeof cursor !== 'string') throw new Error('el cursor no es texto');
-        // JSON.parse devuelve any: el esquema comprueba que sea {id: entero >= 1}
-        const { id } = esquemaCursor.parse(JSON.parse(Buffer.from(cursor, 'base64url').toString()));
-        return id;
-    } catch {
-        // cualquier fallo (no es Base64, no es JSON, id no válido) es el mismo error para el cliente
-        throw new AppError(400, 'Cursor inválido', 'CURSOR_INVALIDO');
-    }
-};
-
 type FiltroPrestamos = { activos?: unknown; cursor?: unknown; limite?: unknown };
 
 export const listar = async (
@@ -74,17 +57,7 @@ export const listar = async (
         limiteNum,
     );
 
-    const hayMas = filas.length > limiteNum;
-    const data = hayMas ? filas.slice(0, limiteNum) : filas; // la fila extra solo avisa, no se devuelve
-    // .at(-1) es "Prestamo | undefined": si hayMas, data nunca está vacío, pero TypeScript no lo sabe
-    const ultima = data.at(-1);
-    return {
-        data,
-        paginacion: {
-            limite: limiteNum,
-            siguienteCursor: hayMas && ultima ? codificarCursor(ultima.id) : null,
-        },
-    };
+    return paginarPorCursor(filas, limiteNum);
 };
 
 // solo bibliotecario/admin llegan aquí (lo filtra la ruta) y pueden devolver cualquiera

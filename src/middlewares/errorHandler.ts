@@ -10,7 +10,8 @@ const leer = (err: unknown, campo: string): unknown =>
 const errorHandler: ErrorRequestHandler = (err: unknown, req, res, _next) => {
     const codigo = leer(err, 'code');
 
-    if (codigo === '23503') {
+    // 23503: foreign_key_violation; 23001: restrict_violation (FK con ON DELETE/UPDATE RESTRICT)
+    if (codigo === '23503' || codigo === '23001') {
         res.status(409).json({
             code: 'REGISTRO_RELACIONADO',
             message: 'No se puede completar: el registro está relacionado con otros datos',

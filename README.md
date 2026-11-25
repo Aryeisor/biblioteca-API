@@ -323,13 +323,14 @@ El token se firma y se verifica solo con el algoritmo `HS256` (se rechaza cualqu
 
 Cada usuario tiene un rol: `lector` (por defecto), `bibliotecario` o `admin`. El rol se guarda en la columna `usuarios.rol`, viaja dentro del JWT y lo verifica el middleware [authorize.ts](src/middlewares/authorize.ts) en cada ruta. Si el rol no alcanza, la respuesta es `403` con `code: "PERMISO_DENEGADO"`.
 
-| Módulo    | Públicas (sin token)                       | lector                                                           | bibliotecario                                        | admin                            |
-| --------- | ------------------------------------------ | ---------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------- |
-| Auth      | `POST /auth/registrar`, `POST /auth/login` | —                                                                | —                                                    | —                                |
-| Autores   | `GET /autores`, `GET /autores/:id`         | no puede escribir                                                | `POST`, `PUT`                                        | `POST`, `PUT`, `DELETE`          |
-| Libros    | `GET /libros`, `GET /libros/:id`           | no puede escribir                                                | `POST`, `PUT`, `PATCH /libros/:id/stock`             | lo anterior + `DELETE`           |
-| Usuarios  | —                                          | solo su propio usuario (`GET /usuarios/:id`, `PUT`, `DELETE`)    | `GET /usuarios` + su propio usuario                  | todo + `PATCH /usuarios/:id/rol` |
-| Préstamos | —                                          | `GET` (solo los suyos) y `POST` (a su nombre); no puede devolver | `GET` todos, `POST`, `PATCH /prestamos/:id/devolver` | igual que bibliotecario          |
+| Módulo    | Públicas (sin token)                                                                  | lector                                                           | bibliotecario                                        | admin                            |
+| --------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------- |
+| Auth      | `POST /auth/registrar`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout` | —                                                                | —                                                    | —                                |
+| Autores   | `GET /autores`, `GET /autores/:id`                                                    | no puede escribir                                                | `POST`, `PUT`                                        | `POST`, `PUT`, `DELETE`          |
+| Libros    | `GET /libros`, `GET /libros/:id`                                                      | no puede escribir                                                | `POST`, `PUT`, `PATCH /libros/:id/stock`             | lo anterior + `DELETE`           |
+| Usuarios  | —                                                                                     | solo su propio usuario (`GET /usuarios/:id`, `PUT`, `DELETE`)    | `GET /usuarios` + su propio usuario                  | todo + `PATCH /usuarios/:id/rol` |
+| Préstamos | —                                                                                     | `GET` (solo los suyos) y `POST` (a su nombre); no puede devolver | `GET` todos, `POST`, `PATCH /prestamos/:id/devolver` | igual que bibliotecario          |
+| Auditoría | —                                                                                     | —                                                                | —                                                    | `GET /auditoria`                 |
 
 Reglas que no dependen solo del rol (las aplica el service, porque dependen del registro pedido):
 
@@ -515,6 +516,40 @@ El historial de préstamos crece todos los días, así que se pagina con **curso
 - No hay `total` ni `totalPaginas`: contar todo el historial en cada petición sería caro, y un historial no se navega saltando a "la página 7".
 - Un lector solo pagina sus propios préstamos; el filtro por usuario se aplica junto con el cursor.
 
+### Auditoría — `/auditoria`
+
+Registro de lo que ocurre en torno a la seguridad. Solo lo ve el `admin`.
+
+| Método | Ruta         | Descripción                                        |
+| ------ | ------------ | -------------------------------------------------- |
+| GET    | `/auditoria` | Lista las entradas, de la más nueva a la más vieja |
+
+Parámetros opcionales (en la URL): `accion` (una de las de la tabla de abajo), `actorId` (quién lo hizo), `limite` (1 a 200, por defecto 50) y `cursor` (el `siguienteCursor` de la respuesta anterior). La respuesta es `{ "data": [...], "paginacion": { "limite": 50, "siguienteCursor": "..." } }`. Un filtro inválido responde `400`.
+
+Cada entrada trae `id`, `creado_en`, `accion`, `actor_id`, `objetivo_id`, `ip`, `request_id` (el `X-Request-Id` de la petición: sirve para encontrar los logs de esa misma petición) y `detalle`.
+
+**Qué se audita:**
+
+| `accion`                  | Cuándo                                    | `detalle`                                 |
+| ------------------------- | ----------------------------------------- | ----------------------------------------- |
+| `registro`                | Alguien se registra                       | —                                         |
+| `login_exitoso`           | Login correcto                            | —                                         |
+| `login_fallido`           | Email inexistente o contraseña incorrecta | `motivo` y `email_huella` (16 caracteres) |
+| `refresh_reuso_detectado` | Se reutiliza un refresh token ya usado    | `familia_id`                              |
+| `logout`, `logout_todo`   | Cierre de sesión                          | —                                         |
+| `rol_cambiado`            | Un admin cambia el rol de alguien         | `de` y `a`                                |
+| `usuario_eliminado`       | Se borra un usuario                       | `autoeliminado`                           |
+
+**Qué NO se guarda, a propósito:** contraseñas, tokens, ni el email completo. En un login fallido el email se guarda solo como huella (un SHA-256 recortado): sirve para ver que el mismo correo se intentó varias veces, pero no se recupera. Tampoco se guarda el email de un usuario eliminado: la auditoría no debe conservar datos personales de alguien que ya no existe. Las lecturas (GET) no se auditan.
+
+**Cómo se escribe:**
+
+- Los cambios sensibles (`rol_cambiado`, `usuario_eliminado`, `logout`, `logout_todo`, `refresh_reuso_detectado`) se registran **en la misma transacción** que el cambio: o ocurren los dos o ninguno. No puede existir un cambio de rol sin su rastro.
+- Los eventos de login y registro se escriben **sin bloquear**: si la tabla de auditoría falla, se deja un error en el log, pero el usuario puede entrar igual. Se prefiere que el login funcione a que una falla de la auditoría deje a todos fuera.
+- La tabla `audit_log` es de **solo escritura**: un trigger rechaza `UPDATE` y `DELETE`. No protege contra quien sea dueño de la tabla (puede desactivar el trigger); en producción la API debería conectarse con un rol que solo tenga `INSERT` y `SELECT`.
+- `actor_id` y `objetivo_id` no tienen clave foránea: el registro sobrevive aunque el usuario se elimine.
+- No hay política de retención todavía: la tabla crece sin límite. Borrar entradas viejas requeriría un rol de mantenimiento (el trigger se lo impide al rol de la API).
+
 ### Respuestas exitosas
 
 | Código | Cuándo                                                                                   |
@@ -577,9 +612,10 @@ Internamente, los services lanzan `AppError(status, message, code)` ([src/utils/
 | `libros`         | Libros con ISBN único y stock; cada uno pertenece a un autor                                                                                  |
 | `usuarios`       | Usuarios de la biblioteca, con email único, columna `password` (hash bcrypt, nunca se devuelve) y `rol` (`lector`, `bibliotecario` o `admin`) |
 | `prestamos`      | Préstamos de libros a usuarios; `fecha_devolucion` vacía = no devuelto                                                                        |
+| `audit_log`      | Auditoría: quién hizo qué, cuándo y desde dónde; solo escritura (ver [Auditoría](#auditoría--auditoria))                                      |
 | `refresh_tokens` | Sesiones: huella SHA-256 del token, familia, vencimiento y marcas de uso/revocación (ver [Sesiones](#sesiones-access-token-y-refresh-token))  |
 
-El esquema se construye **solo con migraciones** ([db/migrations/](db/migrations/)): `000` es el esquema inicial y cada archivo posterior es un cambio (`001` rol, `002` índice compuesto `(usuario_id, id)` de préstamos, `003` índice único parcial que impide dos préstamos activos del mismo libro por usuario, `004` email único sin distinguir mayúsculas, `005` columna `updated_at` mantenida por trigger en autores/libros/usuarios, `006` `password` obligatoria, `007` tabla `refresh_tokens`). Las migraciones 004 y 006 fallan con un mensaje claro si tu base ya tiene datos que las incumplen (emails repetidos por mayúsculas o usuarios sin contraseña): arréglalos a mano y vuelve a ejecutar. No hay un `schema.sql` aparte que pueda quedar desactualizado.
+El esquema se construye **solo con migraciones** ([db/migrations/](db/migrations/)): `000` es el esquema inicial y cada archivo posterior es un cambio (`001` rol, `002` índice compuesto `(usuario_id, id)` de préstamos, `003` índice único parcial que impide dos préstamos activos del mismo libro por usuario, `004` email único sin distinguir mayúsculas, `005` columna `updated_at` mantenida por trigger en autores/libros/usuarios, `006` `password` obligatoria, `007` tabla `refresh_tokens`, `008` tabla `audit_log`). Las migraciones 004 y 006 fallan con un mensaje claro si tu base ya tiene datos que las incumplen (emails repetidos por mayúsculas o usuarios sin contraseña): arréglalos a mano y vuelve a ejecutar. No hay un `schema.sql` aparte que pueda quedar desactualizado.
 
 Cómo funciona el ejecutor ([src/migraciones/](src/migraciones/)):
 
@@ -631,9 +667,11 @@ src/
     filas.ts          # primeraFila: una fila garantizada de un INSERT ... RETURNING
     transaccion.ts    # enTransaccion: BEGIN/COMMIT/ROLLBACK y liberar la conexión
     cookies.ts        # leerCookie: lee una cookie del header (sin cookie-parser)
+    contexto.ts       # contextoDe: IP y X-Request-Id de la petición, para la auditoría
+    cursor.ts         # cursor opaco y paginarPorCursor (préstamos y auditoría)
 tests/                # tests con node:test y Supertest contra la base de prueba
   helpers.ts, almacen-limites.test.ts, auth.test.ts, autores.test.ts, health.test.ts, libros.test.ts,
-  prestamos.test.ts, seguridad.test.ts, sesiones.test.ts, usuarios.test.ts
+  prestamos.test.ts, seguridad.test.ts, sesiones.test.ts, usuarios.test.ts, auditoria.test.ts
 .github/workflows/ci.yml  # integración continua (GitHub Actions)
 tsconfig.json         # TypeScript estricto para revisar tipos (npm run typecheck)
 tsconfig.build.json   # build: compila solo src/ a dist/ (npm run build)
@@ -653,6 +691,7 @@ Resumen de todo lo que ya tiene el proyecto, con el enlace a su explicación:
 | Arquitectura         | Capas separadas: router → controller → service → repository; errores con `AppError` y un único `errorHandler`                                                                                           |
 | Autenticación        | Access token JWT (HS256) corto + refresh token con rotación y detección de robo en cookie `httpOnly`, contraseñas con bcrypt, login de tiempo constante ([ver](#sesiones-access-token-y-refresh-token)) |
 | Autorización (RBAC)  | Roles `lector`, `bibliotecario` y `admin`; `authorize` en cada ruta y reglas de propiedad en los services ([ver](#rutas-protegidas-y-roles-rbac))                                                       |
+| Auditoría            | Tabla `audit_log` de solo escritura: logins, sesiones, cambios de rol y borrados, escritos en la misma transacción que el cambio ([ver](#auditoría--auditoria))                                         |
 | Rate limiting        | Límite por IP y por email en `/auth`, con `Retry-After` ([ver](#rate-limiting))                                                                                                                         |
 | Headers y CORS       | helmet + lista de orígenes permitidos ([ver](#cors-y-headers-de-seguridad-cors_origins))                                                                                                                |
 | IP real              | `trust proxy` configurable para que el límite por IP funcione detrás de un proxy ([ver](#ip-real-detrás-de-un-proxy-trust_proxy))                                                                       |
@@ -692,8 +731,8 @@ Resumen de todo lo que ya tiene el proyecto, con el enlace a su explicación:
 - [x] Migrar los tests y los scripts de `db/` a TypeScript
 - [x] Guardar los contadores del rate limiting en Redis (para varias instancias)
 - [x] Access token corto + refresh token con rotación y cookie `httpOnly`
+- [x] Tabla de auditoría (`audit_log`)
 
 ### Después
 
-- [ ] Tabla de auditoría (`audit_log`)
 - [ ] Evaluar un ORM (Drizzle o Prisma) frente al SQL a mano

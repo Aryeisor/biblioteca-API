@@ -19,6 +19,9 @@ export const ERROR_CUERPO = { error: 'El cuerpo de la petición debe ser un obje
 export const esquemaId = (nombre = 'ID') =>
     z.coerce.number(`${nombre} inválido`).int(`${nombre} inválido`).min(1, `${nombre} inválido`);
 
+// Lo que va DENTRO del cursor opaco: {"id": N}
+export const esquemaCursor = z.object({ id: esquemaId('id') });
+
 // Misma firma que tenía en utils/validators.ts, pero con Zod por dentro.
 export const validarId = (id: unknown, nombre = 'ID'): number => parsear(esquemaId(nombre), id);
 
