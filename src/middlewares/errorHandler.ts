@@ -6,8 +6,18 @@ import { AppError } from '../utils/AppError.js';
 const leer = (err: unknown, campo: string): unknown =>
     typeof err === 'object' && err !== null ? (err as Record<string, unknown>)[campo] : undefined;
 
+// Drizzle envuelve el error de pg en otro (DrizzleQueryError) y deja el original en "cause".
+// Se desenvuelve para que 23503/23505 y "constraint" se lean igual venga de pg directo o de Drizzle.
+const errorDePg = (err: unknown): unknown => {
+    const causa = leer(err, 'cause');
+    return typeof leer(err, 'code') !== 'string' && typeof leer(causa, 'code') === 'string'
+        ? causa
+        : err;
+};
+
 // 4 parámetros obligatorios: así Express sabe que es un manejador de errores (_next no se usa)
-const errorHandler: ErrorRequestHandler = (err: unknown, req, res, _next) => {
+const errorHandler: ErrorRequestHandler = (errOriginal: unknown, req, res, _next) => {
+    const err = errorDePg(errOriginal);
     const codigo = leer(err, 'code');
 
     // 23503: foreign_key_violation; 23001: restrict_violation (FK con ON DELETE/UPDATE RESTRICT)
@@ -56,7 +66,7 @@ const errorHandler: ErrorRequestHandler = (err: unknown, req, res, _next) => {
         return;
     }
 
-    req.log.error({ err }, 'error no controlado');
+    req.log.error({ err: errOriginal }, 'error no controlado');
     // requestId: el cliente lo reporta y lo buscamos en los logs, sin exponerle el error real
     res.status(500).json({
         code: 'ERROR_INTERNO',
