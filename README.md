@@ -18,7 +18,7 @@ Node.js 22 · TypeScript (strict) · Express 5 · PostgreSQL 17 · ES Modules
 | Pruebas       | `node:test` + `node:assert/strict` + `supertest`                                    |
 | Calidad       | ESLint 10 (`typescript-eslint`) + Prettier + `tsc --noEmit`                         |
 | CI            | GitHub Actions: lint, formato, tipos, build, imagen Docker y pruebas                |
-| Contenedores  | Docker + Docker Compose (API + PostgreSQL 17)                                       |
+| Contenedores  | Docker + Docker Compose (API + PostgreSQL 17 + Redis 7)                             |
 
 ## Requisitos
 
@@ -622,14 +622,14 @@ Cómo funciona el ejecutor ([src/migraciones/](src/migraciones/)):
 - Aplica en orden los archivos que faltan, cada uno dentro de una transacción junto con su registro en `schema_migrations`: o se aplica completo o no queda rastro.
 - Guarda una huella (SHA-256) de cada archivo. Si una migración ya aplicada se edita, se niega a continuar: el cambio va en una migración **nueva**.
 - Un bloqueo de PostgreSQL (`pg_advisory_lock`) evita que dos ejecuciones corran a la vez.
-- Para crear una migración nueva, agrega `db/migrations/007_descripcion.sql` con un número mayor al último. Si necesita `CREATE INDEX CONCURRENTLY` (no admite transacción), empieza el archivo con la línea `-- migrar:sin-transaccion`.
+- Para crear una migración nueva, agrega `db/migrations/009_descripcion.sql` con un número mayor al último. Si necesita `CREATE INDEX CONCURRENTLY` (no admite transacción), empieza el archivo con la línea `-- migrar:sin-transaccion`.
 
 ## Estructura del proyecto
 
 ```
 db/
   init-test.ts        # crea la base de prueba (DB_NAME de .env.test) y recrea sus tablas
-  migrations/         # el esquema, versionado: 000 inicial, 001 rol, 002 índice, 003 préstamo único, 004 email, 005 updated_at, 006 password
+  migrations/         # el esquema, versionado: 000 inicial, 001 rol, 002 índice, 003 préstamo único, 004 email, 005 updated_at, 006 password, 007 refresh_tokens, 008 audit_log
   scripts/            # seed-rendimiento.sql: datos de prueba para medir consultas
 docs/
   rbac-matriz-permisos.md  # matriz de permisos por rol y las decisiones detrás
@@ -647,19 +647,19 @@ src/
     estado.ts         # estado "apagando": lo cambia server.ts y lo lee /health/ready
     redis.ts          # cliente de Redis (opcional, solo si hay REDIS_URL)
   routes/             # define las rutas
-    auth.router.ts, autores.router.ts, health.router.ts, libros.router.ts, prestamos.router.ts, usuarios.router.ts
+    auditoria.router.ts, auth.router.ts, autores.router.ts, health.router.ts, libros.router.ts, prestamos.router.ts, usuarios.router.ts
   controllers/        # traduce la petición HTTP a llamadas al service
-    auth_controller.ts, autores_controller.ts, libros_controller.ts, prestamos_controller.ts, usuarios_controller.ts
+    auditoria_controller.ts, auth_controller.ts, autores_controller.ts, libros_controller.ts, prestamos_controller.ts, usuarios_controller.ts
   services/           # reglas de negocio; validan la entrada con los esquemas
-    auth_services.ts, autores_services.ts, libros_services.ts, prestamos_services.ts, usuarios_services.ts
+    auditoria_services.ts, auth_services.ts, autores_services.ts, libros_services.ts, prestamos_services.ts, sesiones_services.ts, usuarios_services.ts
   limites/            # almacenes de contadores del rate limiting: memoria y Redis
     almacen.ts, almacenMemoria.ts, almacenRedis.ts
   migraciones/        # ejecutor de migraciones: ejecutor.ts (lógica) y cli.ts (npm run db:migrar)
   schemas/            # esquemas de Zod: validan la entrada y de ellos salen los tipos (z.infer)
     comunes.ts        # parsear(), validarId, paginación y texto obligatorio
-    autores.ts, libros.ts, prestamos.ts, usuarios.ts
+    auditoria.ts, autores.ts, libros.ts, prestamos.ts, usuarios.ts
   repositories/       # consultas SQL tipadas
-    autores_repositories.ts, libros_repositories.ts, prestamos_repositories.ts, usuarios_repositories.ts
+    auditoria_repositories.ts, autores_repositories.ts (con Drizzle), libros_repositories.ts, prestamos_repositories.ts, refresh_tokens_repositories.ts, usuarios_repositories.ts
   middlewares/        # token JWT, roles, rate limiting y manejo de errores
     auth.ts, authorize.ts, rateLimit.ts, errorHandler.ts
   types/
@@ -675,8 +675,8 @@ src/
     cursor.ts         # cursor opaco y paginarPorCursor (préstamos y auditoría)
 tests/                # tests con node:test y Supertest contra la base de prueba
   helpers.ts, almacen-limites.test.ts, auth.test.ts, autores.test.ts, health.test.ts, libros.test.ts,
-  prestamos.test.ts, seguridad.test.ts, sesiones.test.ts, usuarios.test.ts, auditoria.test.ts
-.github/workflows/ci.yml  # integración continua (GitHub Actions)
+  prestamos.test.ts, seguridad.test.ts, sesiones.test.ts, usuarios.test.ts, auditoria.test.ts, esquema.test.ts, migraciones.test.ts
+.github/workflows/ci.yml  # integración continua (GitHub Actions) con PostgreSQL y Redis
 tsconfig.json         # TypeScript estricto para revisar tipos (npm run typecheck)
 tsconfig.build.json   # build: compila solo src/ a dist/ (npm run build)
 eslint.config.js      # reglas de ESLint con typescript-eslint (npm run lint)
@@ -690,53 +690,68 @@ docker-compose.yml    # servicios api, db (PostgreSQL 17), migrar y redis (Redis
 
 Resumen de todo lo que ya tiene el proyecto, con el enlace a su explicación:
 
-| Área                 | Qué está hecho                                                                                                                                                                                          |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Arquitectura         | Capas separadas: router → controller → service → repository; errores con `AppError` y un único `errorHandler`                                                                                           |
-| Autenticación        | Access token JWT (HS256) corto + refresh token con rotación y detección de robo en cookie `httpOnly`, contraseñas con bcrypt, login de tiempo constante ([ver](#sesiones-access-token-y-refresh-token)) |
-| Autorización (RBAC)  | Roles `lector`, `bibliotecario` y `admin`; `authorize` en cada ruta y reglas de propiedad en los services ([ver](#rutas-protegidas-y-roles-rbac))                                                       |
-| Auditoría            | Tabla `audit_log` de solo escritura: logins, sesiones, cambios de rol y borrados, escritos en la misma transacción que el cambio ([ver](#auditoría--auditoria))                                         |
-| Rate limiting        | Límite por IP y por email en `/auth`, con `Retry-After` ([ver](#rate-limiting))                                                                                                                         |
-| Headers y CORS       | helmet + lista de orígenes permitidos ([ver](#cors-y-headers-de-seguridad-cors_origins))                                                                                                                |
-| IP real              | `trust proxy` configurable para que el límite por IP funcione detrás de un proxy ([ver](#ip-real-detrás-de-un-proxy-trust_proxy))                                                                       |
-| Configuración        | Todas las variables se validan al arrancar; la app no sube con una configuración inválida ([ver](#instalación))                                                                                         |
-| Logs                 | pino en JSON, `X-Request-Id` en cada respuesta, `Authorization` y `password` ocultos ([ver](#logs-log_level-y-x-request-id))                                                                            |
-| Health y apagado     | `/health` y `/health/ready`, apagado ordenado con SIGTERM/SIGINT ([ver](#health-checks--health))                                                                                                        |
-| Paginación           | Por offset en libros y usuarios, por cursor en préstamos ([ver](#paginación-de-get-libros))                                                                                                             |
-| Integridad de datos  | Transacciones con `SELECT ... FOR UPDATE` al prestar y devolver, `CHECK` de stock, índice único parcial de préstamo activo                                                                              |
-| Rendimiento          | Índices en las llaves foráneas e índice compuesto `(usuario_id, id)` para la paginación por cursor                                                                                                      |
-| Pruebas              | `node:test` + Supertest contra una base aparte, incluida una prueba de concurrencia ([ver](#pruebas))                                                                                                   |
-| TypeScript           | Modo estricto, entidades y roles tipados, `req.user` tipado, `tsc` en el build y en CI                                                                                                                  |
-| Validación           | Esquemas de Zod en `src/schemas/`; los tipos de entrada se infieren del esquema                                                                                                                         |
-| Integración continua | GitHub Actions en cada PR (lint, formato, tipos, build, imagen Docker y pruebas con PostgreSQL) y rama `main` protegida                                                                                 |
-| Contenedores         | Dockerfile en dos etapas (compila y publica solo `dist/`), sin dependencias de desarrollo y con usuario no root, Compose con PostgreSQL 17 y healthchecks ([ver](#ejecución-con-docker))                |
-| Calidad de código    | ESLint con `typescript-eslint`, Prettier y `npm run typecheck`                                                                                                                                          |
+| Área                 | Qué está hecho                                                                                                                                                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Arquitectura         | Capas separadas: router → controller → service → repository; errores con `AppError` y un único `errorHandler`                                                                                                                  |
+| Autenticación        | Access token JWT (HS256) corto + refresh token con rotación y detección de robo en cookie `httpOnly`, contraseñas con bcrypt, login de tiempo constante ([ver](#sesiones-access-token-y-refresh-token))                        |
+| Autorización (RBAC)  | Roles `lector`, `bibliotecario` y `admin`; `authorize` en cada ruta y reglas de propiedad en los services ([ver](#rutas-protegidas-y-roles-rbac))                                                                              |
+| Auditoría            | Tabla `audit_log` de solo escritura: logins, sesiones, cambios de rol y borrados, escritos en la misma transacción que el cambio ([ver](#auditoría--auditoria))                                                                |
+| Rate limiting        | Límite por IP y por email en `/auth`, con `Retry-After`; contadores compartidos en Redis (o en memoria si no hay `REDIS_URL`) ([ver](#rate-limiting))                                                                          |
+| Headers y CORS       | helmet + lista de orígenes permitidos ([ver](#cors-y-headers-de-seguridad-cors_origins))                                                                                                                                       |
+| IP real              | `trust proxy` configurable para que el límite por IP funcione detrás de un proxy ([ver](#ip-real-detrás-de-un-proxy-trust_proxy))                                                                                              |
+| Configuración        | Todas las variables se validan al arrancar; la app no sube con una configuración inválida ([ver](#instalación))                                                                                                                |
+| Logs                 | pino en JSON, `X-Request-Id` en cada respuesta, `Authorization` y `password` ocultos ([ver](#logs-log_level-y-x-request-id))                                                                                                   |
+| Health y apagado     | `/health` y `/health/ready`, apagado ordenado con SIGTERM/SIGINT ([ver](#health-checks--health))                                                                                                                               |
+| Paginación           | Por offset en libros y usuarios, por cursor en préstamos ([ver](#paginación-de-get-libros))                                                                                                                                    |
+| Integridad de datos  | Transacciones con `SELECT ... FOR UPDATE` al prestar y devolver, `CHECK` de stock, índice único parcial de préstamo activo, email único sin distinguir mayúsculas, `password` obligatoria y `updated_at` mantenido por trigger |
+| Rendimiento          | Índices en las llaves foráneas e índice compuesto `(usuario_id, id)` para la paginación por cursor                                                                                                                             |
+| Migraciones          | Esquema construido solo con migraciones versionadas; el ejecutor guarda la huella de cada archivo, usa un bloqueo y aplica cada una en su transacción ([ver](#base-de-datos))                                                  |
+| Acceso a datos       | SQL parametrizado a mano en los repositorios; Drizzle en el de autores como experimento ([ver](docs/evaluacion-orm.md))                                                                                                        |
+| Pruebas              | `node:test` + Supertest contra una base aparte, incluida una prueba de concurrencia ([ver](#pruebas))                                                                                                                          |
+| TypeScript           | Modo estricto, entidades y roles tipados, `req.user` tipado, `tsc` en el build y en CI                                                                                                                                         |
+| Validación           | Esquemas de Zod en `src/schemas/`; los tipos de entrada se infieren del esquema                                                                                                                                                |
+| Integración continua | GitHub Actions en cada PR (lint, formato, tipos, build, imagen Docker y pruebas con PostgreSQL) y rama `main` protegida                                                                                                        |
+| Contenedores         | Dockerfile en dos etapas (compila y publica solo `dist/`), sin dependencias de desarrollo y con usuario no root, Compose con PostgreSQL 17, Redis 7 y healthchecks ([ver](#ejecución-con-docker))                              |
+| Calidad de código    | ESLint con `typescript-eslint`, Prettier y `npm run typecheck`                                                                                                                                                                 |
 
-## Próximos pasos
+## Historial de cambios por fase
 
-- [x] Autenticación con JWT y bcrypt
-- [x] Tests con Supertest
-- [x] Docker Compose para levantar la API y PostgreSQL
-- [x] Rate limiting en `/auth` y protección contra enumeración de usuarios
-- [x] Roles y permisos (RBAC) con `lector`, `bibliotecario` y `admin`
-- [x] Paginación en libros, usuarios y préstamos
-- [x] helmet, CORS, logs con pino, health checks y apagado ordenado
-- [x] ESLint y Prettier
+Qué se aplicó en cada fase del proyecto y dónde verlo en este README.
+
+### Etapas 1 a 6: base y endurecimiento de la API ✅
+
+- **Autenticación:** JWT con bcrypt ([ver](#autenticación))
+- **Pruebas:** tests con Supertest contra una base aparte ([ver](#pruebas))
+- **Contenedores:** Docker Compose para levantar la API y PostgreSQL ([ver](#ejecución-con-docker))
+- **Rate limiting:** límite en `/auth` y protección contra enumeración de usuarios ([ver](#rate-limiting))
+- **Roles y permisos:** RBAC con `lector`, `bibliotecario` y `admin` ([ver](#rutas-protegidas-y-roles-rbac))
+- **Paginación:** por offset en libros y usuarios, por cursor en préstamos ([ver](#paginación-de-get-libros))
+- **Seguridad y operación:** helmet, CORS, logs con pino, health checks y apagado ordenado
+- **Calidad de código:** ESLint y Prettier
 
 ### Fase 1: TypeScript y CI ✅
 
-- [x] GitHub Actions: lint, formato, tipos, build, imagen Docker y pruebas con PostgreSQL en cada PR, con `main` protegida
-- [x] Configurar TypeScript (`tsconfig.json`, build y `npm run dev` con `tsx`) y ESLint con `typescript-eslint`
-- [x] Migrar por capas, de abajo hacia arriba: `utils` y `config` → `repositories` → `services` → `controllers` y `routes`
-- [x] Tipar las entidades (`Autor`, `Libro`, `Usuario`, `Prestamo`), los roles y los resultados de las consultas de `pg`
-- [x] Tipar `req.user` (id y rol) para que el RBAC no dependa de `any`
-- [x] Dockerfile en dos etapas: compila y publica solo el resultado
-- [x] Validación con Zod, con los tipos inferidos de los esquemas
-- [x] Migrar los tests y los scripts de `db/` a TypeScript
-- [x] Guardar los contadores del rate limiting en Redis (para varias instancias)
-- [x] Access token corto + refresh token con rotación y cookie `httpOnly`
-- [x] Tabla de auditoría (`audit_log`)
+- **Integración continua:** GitHub Actions con lint, formato, tipos, build, imagen Docker y pruebas con PostgreSQL en cada PR, con `main` protegida
+- **TypeScript estricto:** `tsconfig.json`, build con `tsc` y `npm run dev` con `tsx`; ESLint con `typescript-eslint`
+- **Migración por capas,** de abajo hacia arriba: `utils` y `config` → `repositories` → `services` → `controllers` y `routes`
+- **Tipos del dominio:** `Autor`, `Libro`, `Usuario`, `Prestamo`, los roles y los resultados de las consultas de `pg`
+- **`req.user` tipado** (id y rol), para que el RBAC no dependa de `any`
+- **Dockerfile en dos etapas:** compila y publica solo el resultado
+- **Validación con Zod,** con los tipos inferidos de los esquemas
+- **Tests y scripts de `db/`** migrados a TypeScript
 
-### Después
+### Fase 2: backend y base de datos ✅
 
-- [x] Evaluar un ORM (Drizzle o Prisma) frente al SQL a mano: experimento con Drizzle en el repositorio de autores, ver [docs/evaluacion-orm.md](docs/evaluacion-orm.md)
+- **Registro de migraciones:** un ejecutor propio aplica las migraciones en orden, guarda la huella de cada archivo, usa un bloqueo para que no corran dos a la vez y ejecuta cada una en su transacción. El esquema se construye solo con migraciones, sin `schema.sql` aparte ([ver](#base-de-datos))
+- **Esquema endurecido:** email único sin distinguir mayúsculas (`004`), `updated_at` mantenido por trigger (`005`), `password` obligatoria (`006`) y límite de contraseña de 72 **bytes**, el de bcrypt
+- **Rate limiting en Redis:** los contadores se comparten entre instancias; si Redis falla, la petición pasa y queda en el log. Redis está en Docker Compose y en el CI ([ver](#rate-limiting))
+- **Sesiones:** access token corto más refresh token con rotación, detección de reuso y cookie `httpOnly`; el rol se vuelve a leer en cada renovación ([ver](#sesiones-access-token-y-refresh-token))
+- **Auditoría:** tabla `audit_log` de solo escritura, con las acciones críticas escritas en la misma transacción que el cambio y `GET /auditoria` solo para admin ([ver](#auditoría--auditoria))
+- **Evaluación de un ORM:** experimento con Drizzle en el repositorio de autores, sobre el `Pool` de `pg` existente. Decisión: adoptarlo en los repositorios de consultas simples y dejar en SQL a mano los de préstamos, usuarios, sesiones y auditoría, que usan CTE con bloqueo, window functions o transacciones explícitas ([ver](docs/evaluacion-orm.md))
+
+## Próximos pasos
+
+- [ ] Migrar a Drizzle las consultas simples del repositorio de libros; `listar` (usa `COUNT(*) OVER()`) y los bloqueos de stock con `FOR UPDATE` se dejan en SQL hasta evaluarlos
+- [ ] Que `Autor` y `Libro` pasen a ser los tipos inferidos del esquema, para tener una sola definición
+- [ ] Despliegue continuo: hoy el CI valida el código pero no lo publica
+- [ ] Frontend con React y Next.js que consuma la API (access token en memoria y refresh token en la cookie)
