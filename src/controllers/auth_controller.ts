@@ -5,6 +5,7 @@ import * as sesiones from '../services/sesiones_services.js';
 import { usuarioActual } from '../middlewares/auth.js';
 import { AppError } from '../utils/AppError.js';
 import { leerCookie } from '../utils/cookies.js';
+import { contextoDe } from '../utils/contexto.js';
 
 const COOKIE_REFRESH = 'refresh_token';
 
@@ -26,12 +27,12 @@ const guardarCookie = (req: Request, res: Response, refreshToken: string): void 
 };
 
 export const registrar = async (req: Request, res: Response): Promise<void> => {
-    const usuario = await service.registrar(req.body);
+    const usuario = await service.registrar(req.body, contextoDe(req));
     res.status(201).json(usuario);
 };
 
 export const login = async (req: Request, res: Response): Promise<void> => {
-    const { token, refreshToken } = await service.login(req.body);
+    const { token, refreshToken } = await service.login(req.body, contextoDe(req));
     guardarCookie(req, res, refreshToken);
     res.json({ token });
 };
@@ -40,6 +41,7 @@ export const refrescar = async (req: Request, res: Response): Promise<void> => {
     try {
         const { accessToken, refreshToken } = await sesiones.refrescar(
             leerCookie(req, COOKIE_REFRESH),
+            contextoDe(req),
         );
         guardarCookie(req, res, refreshToken);
         res.json({ token: accessToken });
@@ -54,13 +56,13 @@ export const refrescar = async (req: Request, res: Response): Promise<void> => {
 };
 
 export const logout = async (req: Request, res: Response): Promise<void> => {
-    await sesiones.cerrarSesion(leerCookie(req, COOKIE_REFRESH));
+    await sesiones.cerrarSesion(leerCookie(req, COOKIE_REFRESH), contextoDe(req));
     res.clearCookie(COOKIE_REFRESH, opcionesCookie(req));
     res.status(204).end();
 };
 
 export const logoutTodo = async (req: Request, res: Response): Promise<void> => {
-    await sesiones.cerrarTodasLasSesiones(usuarioActual(req).id);
+    await sesiones.cerrarTodasLasSesiones(usuarioActual(req).id, contextoDe(req));
     res.clearCookie(COOKIE_REFRESH, opcionesCookie(req));
     res.status(204).end();
 };

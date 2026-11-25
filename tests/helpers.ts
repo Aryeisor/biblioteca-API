@@ -20,7 +20,7 @@ if (!process.env.DB_NAME?.endsWith('_test')) {
 export const api = request(app);
 
 export const limpiarTablas = () =>
-    pool.query('TRUNCATE prestamos, libros, autores, usuarios RESTART IDENTITY CASCADE');
+    pool.query('TRUNCATE prestamos, libros, autores, usuarios, audit_log RESTART IDENTITY CASCADE');
 
 export const cerrarPool = () => pool.end();
 

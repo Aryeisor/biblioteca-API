@@ -17,6 +17,7 @@ Roles: `lector` (por defecto, mínimo privilegio) · `bibliotecario` · `admin`
 | Ver un usuario                               | `GET /usuarios/:id`                                                | solo a sí mismo                                                      | ✅                          | ✅                                              |
 | Editar un usuario                            | `PUT /usuarios/:id`                                                | solo a sí mismo                                                      | solo a sí mismo             | cualquiera                                      |
 | Borrar un usuario                            | `DELETE /usuarios/:id`                                             | solo a sí mismo                                                      | solo a sí mismo             | cualquiera **menos a sí mismo**                 |
+| Ver la auditoría                             | `GET /auditoria`                                                   | ❌                                                                   | ❌                          | ✅                                              |
 | Cambiar el rol de alguien                    | `PATCH /usuarios/:id/rol` (nuevo)                                  | ❌                                                                   | ❌                          | ✅ pero **no puede quitarse el rol a sí mismo** |
 
 Códigos de error: sin token o con token inválido → `401`; rol no permitido o recurso ajeno → `403 PERMISO_DENEGADO`; admin que intenta borrarse o degradarse → `400`.
@@ -33,7 +34,7 @@ Códigos de error: sin token o con token inválido → `401`; rol no permitido o
 
 ## Limitaciones conocidas
 
-- **El rol vive en el JWT:** un cambio de rol se aplica cuando el usuario vuelve a iniciar sesión o cuando su token vence. Hasta entonces conserva los permisos anteriores.
+- **El rol vive en el JWT:** un cambio de rol se aplica cuando el access token se renueva (`POST /auth/refresh`) o el usuario vuelve a iniciar sesión: como máximo `JWT_EXPIRES_IN` después. Hasta entonces conserva los permisos anteriores.
 - **Casos que pueden dejar el sistema sin admins:** un admin degradado que usa un token todavía vigente, o dos admins que se degradan al mismo tiempo. Se recupera con el mismo `UPDATE` directo que crea el primer admin.
 
 ## Estado

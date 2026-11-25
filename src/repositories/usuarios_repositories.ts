@@ -65,14 +65,22 @@ export const actualizar = async (
     return rows[0];
 };
 
-export const eliminar = async (id: number): Promise<boolean> => {
-    const { rowCount } = await pool.query('DELETE FROM usuarios WHERE id = $1', [id]);
+export const eliminar = async (client: PoolClient, id: number): Promise<boolean> => {
+    const { rowCount } = await client.query('DELETE FROM usuarios WHERE id = $1', [id]);
     return (rowCount ?? 0) > 0;
 };
 
-export const cambiarRol = async (id: number, rol: Rol): Promise<UsuarioConRol | undefined> => {
-    const { rows } = await pool.query<UsuarioConRol>(
-        'UPDATE usuarios SET rol = $1 WHERE id = $2 RETURNING id, nombre, email, rol, created_at',
+// Devuelve también el rol anterior (para la auditoría). FOR UPDATE: lo lee y lo cambia sin que otro
+// cambio de rol se cuele en medio.
+export const cambiarRol = async (
+    client: PoolClient,
+    id: number,
+    rol: Rol,
+): Promise<(UsuarioConRol & { rol_anterior: Rol }) | undefined> => {
+    const { rows } = await client.query<UsuarioConRol & { rol_anterior: Rol }>(
+        `WITH anterior AS (SELECT id, rol FROM usuarios WHERE id = $2 FOR UPDATE)
+         UPDATE usuarios u SET rol = $1 FROM anterior a WHERE u.id = a.id
+         RETURNING u.id, u.nombre, u.email, u.rol, u.created_at, a.rol AS rol_anterior`,
         [rol, id],
     );
     return rows[0];

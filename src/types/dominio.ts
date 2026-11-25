@@ -60,6 +60,44 @@ export type FilaRefreshToken = {
     en_gracia: boolean; // se usó hace muy poco: probablemente una carrera legítima, no un robo
 };
 
+// Auditoría: qué acciones se registran (una sola fuente: de aquí sale el tipo y el filtro de la API)
+export const ACCIONES_AUDITORIA = [
+    'registro',
+    'login_exitoso',
+    'login_fallido',
+    'refresh_reuso_detectado',
+    'logout',
+    'logout_todo',
+    'rol_cambiado',
+    'usuario_eliminado',
+] as const;
+export type AccionAuditoria = (typeof ACCIONES_AUDITORIA)[number];
+
+// De dónde viene la petición. Lo arma el controlador a partir del Request (ver utils/contexto.ts)
+export type ContextoAuditoria = { ip: string | null; requestId: string | null };
+
+// Solo valores simples: así nadie mete por error un objeto grande (un body entero, un usuario con password)
+export type DetalleAuditoria = Record<string, string | number | boolean | null>;
+
+export type EventoAuditoria = {
+    accion: AccionAuditoria;
+    actorId?: number | null;
+    objetivoId?: number | null;
+    detalle?: DetalleAuditoria;
+    contexto: ContextoAuditoria;
+};
+
+export type EntradaAuditoria = {
+    id: number;
+    creado_en: Date;
+    accion: AccionAuditoria;
+    actor_id: number | null;
+    objetivo_id: number | null;
+    ip: string | null;
+    request_id: string | null;
+    detalle: DetalleAuditoria;
+};
+
 export type Prestamo = {
     id: number;
     fecha_prestamo: Date;
