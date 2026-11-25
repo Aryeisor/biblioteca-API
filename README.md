@@ -10,7 +10,7 @@ Node.js 22 · TypeScript (strict) · Express 5 · PostgreSQL 17 · ES Modules
 | ------------- | ----------------------------------------------------------------------------------- |
 | Lenguaje      | TypeScript estricto: `tsx` en desarrollo y pruebas, `tsc` para compilar a `dist/`   |
 | Validación    | `zod`: los esquemas de `src/schemas/` validan la entrada y de ellos salen los tipos |
-| Base de datos | `pg` (pool y transacciones), SQL escrito a mano en `src/repositories/`              |
+| Base de datos | `pg` (pool y transacciones), SQL a mano en `src/repositories/` (autores: Drizzle)   |
 | Autenticación | `jsonwebtoken` (HS256) · `bcryptjs` · RBAC propio (`authorize`)                     |
 | Seguridad     | `helmet` · `cors` con lista de orígenes · rate limiting propio (Redis o memoria)    |
 | Configuración | `dotenv` + validación propia de variables en `src/config/env.ts`                    |
@@ -633,9 +633,13 @@ db/
   scripts/            # seed-rendimiento.sql: datos de prueba para medir consultas
 docs/
   rbac-matriz-permisos.md  # matriz de permisos por rol y las decisiones detrás
+  evaluacion-orm.md        # experimento con Drizzle en un repositorio: hallazgos y decisión
 src/
   server.ts           # punto de entrada: conecta a la BD, levanta el servidor y maneja el apagado ordenado
   app.ts              # configuración de Express y rutas
+  orm/
+    esquema.ts        # tabla autores descrita en TypeScript, solo para tipos (experimento con Drizzle)
+    cliente.ts        # drizzle() sobre el Pool existente
   config/
     env.ts            # carga y valida las variables de entorno (se detiene si faltan o son inválidas)
     db.ts             # conexión (pool) a PostgreSQL
@@ -735,4 +739,4 @@ Resumen de todo lo que ya tiene el proyecto, con el enlace a su explicación:
 
 ### Después
 
-- [ ] Evaluar un ORM (Drizzle o Prisma) frente al SQL a mano
+- [x] Evaluar un ORM (Drizzle o Prisma) frente al SQL a mano: experimento con Drizzle en el repositorio de autores, ver [docs/evaluacion-orm.md](docs/evaluacion-orm.md)
