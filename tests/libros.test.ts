@@ -208,3 +208,53 @@ describe('Libros: paginación', () => {
         });
     }
 });
+
+describe('Libros: PUT y DELETE', () => {
+    // Van al final: crean y borran sus propios libros, así no alteran los conteos de la paginación.
+    let propio: Libro;
+
+    before(async () => {
+        propio = await crearLibro(token, {
+            titulo: 'Crónica de una muerte anunciada',
+            autorId: autor.id,
+            stock: 1,
+            isbn: '333',
+        });
+    });
+
+    it('PUT /libros/:id actualiza todos los campos (200)', async () => {
+        const res = await api
+            .put(`/libros/${propio.id}`)
+            .set(auth())
+            .send({ titulo: 'Crónica (edición nueva)', autorId: autor.id, stock: 7, isbn: null });
+        assert.equal(res.status, 200);
+        assert.equal(res.body.titulo, 'Crónica (edición nueva)');
+        assert.equal(res.body.stock, 7);
+        assert.equal(res.body.isbn, null);
+        assert.equal(res.body.autor, 'Gabriel García Márquez');
+    });
+
+    it('PUT /libros/:id inexistente da 404', async () => {
+        const res = await api
+            .put('/libros/9999')
+            .set(auth())
+            .send({ titulo: 'Nada', autorId: autor.id });
+        assert.equal(res.status, 404);
+    });
+
+    it('PUT /libros/:id con el ISBN de otro libro da 409', async () => {
+        const res = await api
+            .put(`/libros/${propio.id}`)
+            .set(auth())
+            .send({ titulo: 'Choque', autorId: autor.id, isbn: '111' });
+        assert.equal(res.status, 409);
+    });
+
+    it('DELETE /libros/:id borra el libro (204) y luego da 404', async () => {
+        const borrado = await api.delete(`/libros/${propio.id}`).set(auth());
+        assert.equal(borrado.status, 204);
+
+        const otraVez = await api.delete(`/libros/${propio.id}`).set(auth());
+        assert.equal(otraVez.status, 404);
+    });
+});
